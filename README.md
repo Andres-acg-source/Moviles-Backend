@@ -22,7 +22,7 @@ Public endpoints:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Service health check |
-| POST | `/api/v1/auth/register` | Create an account (`email`, `password`) |
+| POST | `/api/v1/auth/register` | Create an account (`email`, `password`, optional `name`) |
 | POST | `/api/v1/auth/login` | Get a JWT (`email`, `password`) |
 | GET | `/api/v1/lots` | List lots with levels and spot state |
 | GET | `/api/v1/lots/:lotId` | Get one lot |
@@ -36,6 +36,7 @@ Authenticated endpoints require `Authorization: Bearer <token>`:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| GET | `/api/v1/auth/me` | Validate the token and return the current user (`id`, `email`, `name`) |
 | GET | `/api/v1/reservations/active` | Get the current user's active reservation |
 | POST | `/api/v1/reservations` | Reserve a free spot (`lotId`, `spotId`, `durationMinutes`) |
 | DELETE | `/api/v1/reservations/:reservationId` | Cancel a reservation |
@@ -48,7 +49,7 @@ Authenticated endpoints require `Authorization: Bearer <token>`:
 | POST | `/api/v1/payments` | Record an idempotent reservation or extension payment |
 | POST | `/api/v1/departure-recommendation` | Calculate a leave time from arrival, travel time, and forecast |
 | POST | `/api/v1/telemetry` | Accept privacy-conscious product events |
-| GET | `/api/v1/analytics/summary` | Return aggregate parking, reservation, and event metrics |
+| GET | `/api/v1/analytics/summary` | Return aggregate parking, reservation, and event metrics, plus `walkingTime` (BQ2: views and average minutes from `walking_time_viewed` events, total and by level) |
 
 Additional authenticated action: `POST /api/v1/spots/:lotId/:spotId/report-stale` re-verifies an occupied spot reported as empty.
 

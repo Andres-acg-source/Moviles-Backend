@@ -5,7 +5,7 @@ export interface ParkingLevel { id: string; name: string; spots: ParkingSpot[] }
 export interface ParkingLot { id: string; name: string; zone: string; distanceMeters: number; levels: ParkingLevel[] }
 export interface ForecastPoint { hour: number; occupancy: number }
 export interface Forecast { lotId: string; points: ForecastPoint[] }
-export interface User { id: string; email: string; passwordHash: string }
+export interface User { id: string; email: string; name?: string; passwordHash: string }
 export type ReservationStatus = 'active' | 'fulfilled' | 'cancelled' | 'expired' | 'no_show'
 export interface Reservation { id: string; userId: string; lotId: string; spotId: string; spotCode: string; startsAt: string; endsAt: string; status: ReservationStatus; checkedInAt?: string }
 export interface ParkedVehicle { lotId: string; lotName: string; levelName: string; spotCode: string; parkedAt: string }

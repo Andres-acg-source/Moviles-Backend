@@ -16,16 +16,21 @@ const matches = (value: string, stored: string) => {
 
 export class AuthService {
   constructor(private readonly store: Store) {}
-  register(email: string, password: string) {
+  async register(email: string, password: string, name?: string) {
     const normalized = email.toLowerCase();
     if (this.store.data.users.some(user => user.email === normalized)) throw new Error('EMAIL_EXISTS');
-    const user = { id: randomUUID(), email: normalized, passwordHash: hash(password) };
-    this.store.data.users.push(user); return user;
+    const user = { id: randomUUID(), email: normalized, name, passwordHash: hash(password) };
+    this.store.data.users.push(user); await this.store.save(); return user;
   }
   login(email: string, password: string) {
     const user = this.store.data.users.find(item => item.email === email.toLowerCase());
     if (!user || !matches(password, user.passwordHash)) throw new Error('INVALID_CREDENTIALS');
     return user;
+  }
+  profile(userId: string) {
+    const user = this.store.data.users.find(item => item.id === userId);
+    if (!user) throw new Error('USER_NOT_FOUND');
+    return { id: user.id, email: user.email, name: user.name ?? '' };
   }
 }
 

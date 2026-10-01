@@ -67,9 +67,15 @@ export class LifecycleService {
     this.store.data.telemetry.push({ id: randomUUID(), userId, name, properties, createdAt: new Date().toISOString() }); await this.store.save();
   }
 
+  walkingTime() {
+    const views = this.store.data.telemetry.filter(event => event.name === 'walking_time_viewed' && typeof event.properties.minutes === 'number');
+    const summarize = (items: TelemetryEvent[]) => ({ views: items.length, averageMinutes: items.length ? Math.round(items.reduce((total, event) => total + Number(event.properties.minutes), 0) / items.length * 10) / 10 : 0 });
+    const levels = [...new Set(views.map(event => String(event.properties.levelCode ?? 'unknown')))].sort();
+    return { ...summarize(views), byLevel: Object.fromEntries(levels.map(level => [level, summarize(views.filter(event => String(event.properties.levelCode ?? 'unknown') === level))])) };
+  }
   analytics() {
     const events = this.store.data.telemetry; const byName = events.reduce<Record<string, number>>((result, event) => { result[event.name] = (result[event.name] ?? 0) + 1; return result; }, {});
     const free = this.store.data.lots.flatMap(lot => lot.levels.flatMap(level => level.spots));
-    return { generatedAt: new Date().toISOString(), eventCounts: byName, parking: { totalSpots: free.length, freeSpots: free.filter(spot => spot.state === 'free').length, accessibleFree: free.filter(spot => spot.isAccessible && spot.state === 'free').length, evFree: free.filter(spot => spot.isEv && spot.state === 'free').length }, reservations: { active: this.store.data.reservations.filter(item => item.status === 'active').length, fulfilled: this.store.data.reservations.filter(item => item.status === 'fulfilled').length, noShow: this.store.data.reservations.filter(item => item.status === 'no_show').length } };
+    return { generatedAt: new Date().toISOString(), eventCounts: byName, walkingTime: this.walkingTime(), parking: { totalSpots: free.length, freeSpots: free.filter(spot => spot.state === 'free').length, accessibleFree: free.filter(spot => spot.isAccessible && spot.state === 'free').length, evFree: free.filter(spot => spot.isEv && spot.state === 'free').length }, reservations: { active: this.store.data.reservations.filter(item => item.status === 'active').length, fulfilled: this.store.data.reservations.filter(item => item.status === 'fulfilled').length, noShow: this.store.data.reservations.filter(item => item.status === 'no_show').length } };
   }
 }
