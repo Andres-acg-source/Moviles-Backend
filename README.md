@@ -49,7 +49,7 @@ Authenticated endpoints require `Authorization: Bearer <token>`:
 | POST | `/api/v1/payments` | Record an idempotent reservation or extension payment |
 | POST | `/api/v1/departure-recommendation` | Calculate a leave time from arrival, travel time, and forecast |
 | POST | `/api/v1/telemetry` | Accept privacy-conscious product events |
-| GET | `/api/v1/analytics/summary` | Return aggregate parking, reservation, and event metrics |
+| GET | `/api/v1/analytics/summary` | Return aggregate parking, reservation, and event metrics, plus `walkingTime` (BQ2: views and average minutes from `walking_time_viewed` events, total and by level) |
 
 Additional authenticated action: `POST /api/v1/spots/:lotId/:spotId/report-stale` re-verifies an occupied spot reported as empty.
 
