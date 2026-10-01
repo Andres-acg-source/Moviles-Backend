@@ -22,7 +22,7 @@ Public endpoints:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Service health check |
-| POST | `/api/v1/auth/register` | Create an account (`email`, `password`) |
+| POST | `/api/v1/auth/register` | Create an account (`email`, `password`, optional `name`) |
 | POST | `/api/v1/auth/login` | Get a JWT (`email`, `password`) |
 | GET | `/api/v1/lots` | List lots with levels and spot state |
 | GET | `/api/v1/lots/:lotId` | Get one lot |
@@ -36,6 +36,7 @@ Authenticated endpoints require `Authorization: Bearer <token>`:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| GET | `/api/v1/auth/me` | Validate the token and return the current user (`id`, `email`, `name`) |
 | GET | `/api/v1/reservations/active` | Get the current user's active reservation |
 | POST | `/api/v1/reservations` | Reserve a free spot (`lotId`, `spotId`, `durationMinutes`) |
 | DELETE | `/api/v1/reservations/:reservationId` | Cancel a reservation |
