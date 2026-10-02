@@ -1,0 +1,4 @@
+import { ParkingLot, Reservation } from './types.js';
+
+export const lotVm = (lot: ParkingLot) => ({ ...lot, totalSpots: lot.levels.reduce((sum, level) => sum + level.spots.length, 0), freeSpots: lot.levels.reduce((sum, level) => sum + level.spots.filter(spot => spot.state === 'free').length, 0) });
+export const reservationVm = (reservation: Reservation) => ({ id: reservation.id, lotId: reservation.lotId, spotId: reservation.spotId, spotCode: reservation.spotCode, startsAt: reservation.startsAt, endsAt: reservation.endsAt, status: reservation.status, checkedInAt: reservation.checkedInAt ?? null });
