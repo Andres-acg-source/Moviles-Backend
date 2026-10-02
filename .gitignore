@@ -1,7 +1,4 @@
 node_modules/
 dist/
 .env
-BACKEND_CHANGES.md
-BACKEND_REPORT.md
-CLAUDE.md
-.claude/
+data/*.json
