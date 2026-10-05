@@ -3,6 +3,7 @@ import { after, before, beforeEach, test } from 'node:test';
 import { db } from '../src/db.js';
 import { ensureHistory } from '../src/simulation/history.js';
 import { baseOccupancy } from '../src/simulation/profile.js';
+import { clearSimulatedOccupancy } from '../src/simulation/clear.js';
 import { clearScenarios } from '../src/simulation/scenarios.js';
 import { SimulatedOccupancySource } from '../src/simulation/simulator.js';
 import { client, createUser, setAllSpots, setupTestDb, startServer } from './helpers.js';
@@ -69,6 +70,20 @@ test('tick never touches spots held by users', async () => {
   assert.deepEqual(await userSpots(), before);
   await api('POST', '/api/v1/sim/scenario', { headers: { 'x-sim-key': 'test-sim-key' }, body: { occupancy: 100 } });
   assert.deepEqual(await userSpots(), before);
+  assert.equal((await db().query('SELECT status FROM reservations WHERE id = $1', [reserved.id])).rows[0].status, 'active');
+});
+
+test('clearing simulated occupancy frees every simulator spot and keeps user reservations', async () => {
+  const reserver = await createUser();
+  const reserved = (await api('POST', '/api/v1/reservations', { token: reserver.token, body: { spotId: 'P1-A-01' } })).body;
+  for (let tick = 0; tick < 6; tick++) await simulator.tick({ force: true });
+  const busy = await db().query(`SELECT count(*)::int AS n FROM spots WHERE source = 'sim' AND status IN ('occupied', 'reserved')`);
+  assert.ok(busy.rows[0].n > 0);
+  assert.equal(await clearSimulatedOccupancy(), busy.rows[0].n);
+  const { rows } = await db().query<{ id: string; status: string }>(`SELECT id, status FROM spots WHERE status <> 'free' AND status <> 'disabled'`);
+  assert.deepEqual(rows, [{ id: 'P1-A-01', status: 'reserved' }]);
+  const open = await db().query(`SELECT count(*)::int AS n FROM reservations WHERE source = 'sim' AND (status = 'active' OR (status = 'fulfilled' AND released_at IS NULL))`);
+  assert.equal(open.rows[0].n, 0);
   assert.equal((await db().query('SELECT status FROM reservations WHERE id = $1', [reserved.id])).rows[0].status, 'active');
 });
 
