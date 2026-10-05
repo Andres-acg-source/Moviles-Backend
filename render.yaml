@@ -16,6 +16,6 @@ services:
       - key: SIM_KEY
         generateValue: true
       - key: OCCUPANCY_SOURCE
-        value: simulator
+        value: none
       - key: HOLD_MINUTES
         value: "15"

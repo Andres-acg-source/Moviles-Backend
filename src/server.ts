@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { assertConfig, occupancySource, port } from './config.js';
 import { closeDb, initDb, migrate } from './db.js';
 import { seedDatabase } from './seed.js';
+import { clearSimulatedOccupancy } from './simulation/clear.js';
 import { ensureHistory } from './simulation/history.js';
 import { createOccupancySource } from './simulation/index.js';
 
@@ -15,6 +16,7 @@ await seedDatabase();
 
 const occupancy = createOccupancySource(occupancySource());
 if (occupancySource() === 'simulator' && (await ensureHistory())) console.log('Generated 4 weeks of simulated occupancy history');
+if (occupancySource() === 'none') console.log(`Freed ${await clearSimulatedOccupancy()} spots held by the simulator`);
 occupancy.start();
 
 const server = createApp({ occupancy }).listen(port(), () => {
