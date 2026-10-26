@@ -1,5 +1,6 @@
 import { eventCounts } from './event-counts.js';
 import { filterUsage } from './filter-usage.js';
+import { leadTimeOverview } from './lead-time-overview.js';
 import { mapLoad } from './map-load.js';
 import { parking } from './parking.js';
 import { reservationPolicy } from './reservation-policy.js';
@@ -8,8 +9,9 @@ import { unmetDemand } from './unmet-demand.js';
 import { walkingTime } from './walking-time.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy] = await Promise.all([
-    eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy()
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead] = await Promise.all([
+    eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
+    leadTimeOverview()
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -20,6 +22,7 @@ export async function analyticsSummary() {
     mapLoad: map,
     filterUsage: filters,
     unmetDemand: unmet,
-    reservationPolicy: policy
+    reservationPolicy: policy,
+    leadTime: lead
   };
 }

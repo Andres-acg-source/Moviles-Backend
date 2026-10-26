@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['eventCounts', 'filterUsage', 'generatedAt', 'mapLoad', 'parking', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -187,4 +187,33 @@ test('reservation policy held spots scale with daily demand and are capped by fr
   await db().query(`INSERT INTO occupancy_snapshots (level_code, taken_at, total, free, reserved, occupied, source) VALUES ('P2', $1, 48, 3, 0, 45, 'sim')`, [slotStart(slot)]);
   row = (await summary()).reservationPolicy.rows.find((item: { levelCode: string }) => item.levelCode === 'P2');
   assert.equal(row.sim.heldSpots, 3);
+});
+
+test('lead time BQ6 overview groups the personal advice of every user', async () => {
+  const [fast, slow, newcomer] = [await createUser(), await createUser(), await createUser()];
+  let spotNumber = 0;
+  const trips = async (userId: string, minutes: (number | 'expired')[]) => {
+    for (const value of minutes) {
+      const spot = `P3-A-${String(++spotNumber).padStart(2, '0')}`;
+      if (value === 'expired') {
+        await db().query(`INSERT INTO reservations (user_id, spot_id, source, status, created_at, expires_at) VALUES ($1, $2, 'user', 'expired', now() - interval '2 days', now() - interval '2 days')`, [userId, spot]);
+      } else {
+        await db().query(
+          `INSERT INTO reservations (user_id, spot_id, source, status, created_at, expires_at, checked_in_at, released_at)
+           VALUES ($1, $2, 'user', 'fulfilled', now() - interval '1 day', now(), now() - interval '1 day' + make_interval(mins => $3), now())`,
+          [userId, spot, value]
+        );
+      }
+    }
+  };
+  await trips(fast.id, [4, 6, 8]);
+  await trips(slow.id, [20, 25, 'expired', 30]);
+  await trips(newcomer.id, [5]);
+  const body = (await summary()).leadTime;
+  assert.equal(body.holdMinutes, 15);
+  assert.equal(body.usersWithAdvice, 2);
+  assert.equal(body.usersWithoutEnoughTrips, 1);
+  assert.equal(body.expiredShare, 0.125);
+  assert.deepEqual(body.buckets.map((bucket: { users: number }) => bucket.users), [1, 0, 0, 1, 0]);
+  assert.equal(body.medianP80TravelMinutes, 17.1);
 });
