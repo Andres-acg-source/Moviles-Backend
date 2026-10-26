@@ -15,7 +15,9 @@ const NO_OPEN_RESERVATION = `NOT EXISTS (
   SELECT 1 FROM reservations r
    WHERE r.spot_id = s.id AND (r.status = 'active' OR (r.status = 'fulfilled' AND r.released_at IS NULL)))`;
 
-interface LevelState { code: string; total: number; busy: number }
+// `simulated` only counts the spots taken by the simulator. The spots of ParkWise users are added
+// on top of the profile, so when a user takes a spot the free count goes down and stays down.
+interface LevelState { code: string; total: number; simulated: number }
 
 export interface SimulatorOptions { now?: () => Date; random?: () => number }
 
@@ -60,7 +62,7 @@ export class SimulatedOccupancySource implements OccupancySource {
       const scenario = scenarioFor(level.code, now);
       if (scenario !== undefined) scenarioLevels.add(level.code);
       const target = scenario ?? targetOccupancy(level.code, now, this.random);
-      const gap = Math.round(target * level.total) - level.busy;
+      const gap = Math.round(target * level.total) - level.simulated;
       const step = scenario !== undefined || force ? gap : Math.sign(gap) * Math.ceil(Math.abs(gap) * PROFILE_STEP);
       if (step > 0) await this.fill(level.code, step);
       if (step < 0) await this.vacate(level.code, -step);
@@ -73,33 +75,37 @@ export class SimulatedOccupancySource implements OccupancySource {
     const { rows } = await db().query<LevelState>(
       `SELECT l.code,
               count(s.id) FILTER (WHERE s.status <> 'disabled')::int AS total,
-              count(s.id) FILTER (WHERE s.status IN ('occupied', 'reserved'))::int AS busy
+              count(s.id) FILTER (WHERE s.status IN ('occupied', 'reserved') AND s.source = 'sim')::int AS simulated
          FROM levels l LEFT JOIN spots s ON s.level_code = l.code
         GROUP BY l.code, l.sort ORDER BY l.sort`
     );
     return rows;
   }
 
+  // The random pick is materialized first, so the update changes exactly `count` spots. Inside an
+  // `IN (...)` the planner may run the random subquery again for every row and change many more.
   private async fill(levelCode: string, count: number) {
     await db().query(
-      `UPDATE spots SET status = 'occupied', source = 'sim', updated_at = now()
-        WHERE id IN (
-          SELECT s.id FROM spots s
-           WHERE s.level_code = $1 AND s.status = 'free' AND s.held_by IS NULL AND ${NO_OPEN_RESERVATION}
-           ORDER BY random() LIMIT $2 FOR UPDATE SKIP LOCKED)
-          AND status = 'free' AND held_by IS NULL`,
+      `WITH picked AS MATERIALIZED (
+         SELECT s.id FROM spots s
+          WHERE s.level_code = $1 AND s.status = 'free' AND s.held_by IS NULL AND ${NO_OPEN_RESERVATION}
+          ORDER BY random() LIMIT $2 FOR UPDATE SKIP LOCKED)
+       UPDATE spots SET status = 'occupied', source = 'sim', updated_at = now()
+         FROM picked
+        WHERE spots.id = picked.id AND spots.status = 'free' AND spots.held_by IS NULL`,
       [levelCode, count]
     );
   }
 
   private async vacate(levelCode: string, count: number) {
     await db().query(
-      `UPDATE spots SET status = 'free', source = NULL, updated_at = now()
-        WHERE id IN (
-          SELECT s.id FROM spots s
-           WHERE s.level_code = $1 AND s.status = 'occupied' AND s.source = 'sim' AND s.held_by IS NULL AND ${NO_OPEN_RESERVATION}
-           ORDER BY random() LIMIT $2 FOR UPDATE SKIP LOCKED)
-          AND status = 'occupied' AND source = 'sim' AND held_by IS NULL`,
+      `WITH picked AS MATERIALIZED (
+         SELECT s.id FROM spots s
+          WHERE s.level_code = $1 AND s.status = 'occupied' AND s.source = 'sim' AND s.held_by IS NULL AND ${NO_OPEN_RESERVATION}
+          ORDER BY random() LIMIT $2 FOR UPDATE SKIP LOCKED)
+       UPDATE spots SET status = 'free', source = NULL, updated_at = now()
+         FROM picked
+        WHERE spots.id = picked.id AND spots.status = 'occupied' AND spots.source = 'sim' AND spots.held_by IS NULL`,
       [levelCode, count]
     );
   }
