@@ -74,3 +74,20 @@ test('default auth limit allows 10 attempts per minute', async () => {
     await fresh.close();
   }
 });
+
+test('dashboard page and its script are served from the same origin', async () => {
+  const redirect = await fetch(`${server.base}/dashboard`, { redirect: 'manual' });
+  assert.equal(redirect.status, 301);
+  assert.equal(redirect.headers.get('location'), '/dashboard/');
+  const page = await fetch(`${server.base}/dashboard/`);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-type') ?? '', /text\/html/);
+  assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'self'/);
+  const html = await page.text();
+  assert.match(html, /<script type="module" src="dashboard.js"><\/script>/);
+  assert.doesNotMatch(html, /<script>/);
+  const script = await fetch(`${server.base}/dashboard/dashboard.js`);
+  assert.equal(script.status, 200);
+  assert.match(script.headers.get('content-type') ?? '', /javascript/);
+  assert.equal((await fetch(`${server.base}/dashboard/missing.js`)).status, 404);
+});

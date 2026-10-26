@@ -87,6 +87,20 @@ test('clearing simulated occupancy frees every simulator spot and keeps user res
   assert.equal((await db().query('SELECT status FROM reservations WHERE id = $1', [reserved.id])).rows[0].status, 'active');
 });
 
+test('a user reservation takes a free spot and the simulator does not give it back', async () => {
+  const user = await createUser();
+  await api('POST', '/api/v1/sim/scenario', { headers: { 'x-sim-key': 'test-sim-key' }, body: { level: 'P1', occupancy: 50 } });
+  const freeInP1 = async () => ((await api('GET', '/api/v1/levels')).body.levels as Array<{ code: string; free: number }>)
+    .find(level => level.code === 'P1')!.free;
+  const before = await freeInP1();
+  assert.equal(before, 30, 'a 50% scenario on the 60 spots of P1 leaves exactly 30 free');
+  const spot = (await db().query(`SELECT id FROM spots WHERE level_code = 'P1' AND status = 'free' ORDER BY id LIMIT 1`)).rows[0].id;
+  assert.equal((await api('POST', '/api/v1/reservations', { token: user.token, body: { spotId: spot } })).status, 201);
+  assert.equal(await freeInP1(), before - 1);
+  for (let tick = 0; tick < 3; tick++) await simulator.tick();
+  assert.equal(await freeInP1(), before - 1);
+});
+
 test('a 100% scenario fills the campus and reset returns to the profile', async () => {
   const user = await createUser();
   await api('POST', '/api/v1/reservations', { token: user.token, body: { spotId: 'P3-B-05' } });

@@ -484,6 +484,7 @@ Section notes:
 | `filterUsage` (BQ3) | Current Bogotá month. `activeUsers` counts distinct users who sent `app_opened` with a token. `percentNeverUsed` is the percentage of active users who never applied that filter this month |
 | `unmetDemand` (BQ4) | Times a logged-in user saw a full campus, counted once per user and 15-minute slot. User ids are not exposed |
 | `reservationPolicy` (BQ5) | Last 28 days, by level and creation slot. See below |
+| `leadTime` (BQ6) | The personal advice of `/recommendations/lead-time` for every user with at least 3 finished reservations, grouped in `buckets`. `medianP80TravelMinutes` is the median of the users' 80th percentiles and `expiredShare` the share of finished user reservations that expired |
 
 `reservationPolicy` fields:
 
@@ -491,6 +492,18 @@ Section notes:
 - `noShowRate = expired ÷ created`.
 - `recommendedWindowMinutes` is the p90 check-in time rounded to a multiple of 5 and kept between 10 and 30. It is `null` without check-ins.
 - `heldSpots = round(created per day × (1 − noShowRate))`, capped at the average number of free spots in that slot.
+
+```json
+"leadTime": {
+  "holdMinutes": 15, "minReservations": 3, "usersWithAdvice": 7, "usersWithoutEnoughTrips": 1,
+  "medianP80TravelMinutes": 15.2, "expiredShare": 0.114,
+  "buckets": [ { "label": "Reserve when leaving", "users": 3 }, { "label": "1 to 5 min after leaving", "users": 4 } ]
+}
+```
+
+## Dashboard
+
+`GET /dashboard/` serves the team dashboard: one page with every business question, read from `GET /api/v1/analytics/summary` with a ParkWise session. It refreshes every 30 seconds while the tab is visible. The page and its script are served by this backend, so the Content-Security-Policy stays `script-src 'self'`.
 
 ## Simulator (demo only)
 

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ParkWise Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="dashboard.css">
+  <script type="module" src="dashboard.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">P</span>
+      <div>
+        <h1>ParkWise Analytics</h1>
+        <p class="muted">Business questions answered from the shared PostgreSQL database</p>
+      </div>
+    </div>
+    <div class="controls" id="controls" hidden>
+      <span class="updated mono" id="updated" aria-live="polite"></span>
+      <label class="toggle"><input type="checkbox" id="auto" checked> Auto-refresh 30 s</label>
+      <button type="button" class="btn" id="refresh">Refresh</button>
+      <button type="button" class="btn btn-ghost" id="signout">Sign out</button>
+    </div>
+  </header>
+
+  <section class="login" id="login" hidden>
+    <form class="card login-card" id="login-form">
+      <h2>Sign in</h2>
+      <p class="muted">Use a ParkWise account. The dashboard reads <span class="mono">GET /api/v1/analytics/summary</span> with that session.</p>
+      <label>Email <input type="email" id="email" autocomplete="username" required></label>
+      <label>Password <input type="password" id="password" autocomplete="current-password" required></label>
+      <p class="error" id="login-error" role="alert"></p>
+      <button type="submit" class="btn btn-primary" id="login-submit">Sign in</button>
+    </form>
+  </section>
+
+  <main id="board" hidden>
+    <p class="error banner" id="board-error" role="alert" hidden></p>
+
+    <section aria-labelledby="now-title">
+      <h2 class="section-title" id="now-title">Campus right now</h2>
+      <div class="kpis" id="kpis"></div>
+    </section>
+
+    <section aria-labelledby="s2-title">
+      <h2 class="section-title" id="s2-title">Sprint 2</h2>
+      <div class="grid">
+        <article class="card" data-bq="bq1">
+          <header class="card-head">
+            <p class="tag">BQ1 · Type 1 · Andrés Cáceres</p>
+            <h3>Map load time and failures</h3>
+            <p class="question">What is the loading time of the floor map and the rate of failed loads, by device model, OS version and level?</p>
+          </header>
+          <div class="card-body" id="bq1"></div>
+        </article>
+        <article class="card" data-bq="bq2">
+          <header class="card-head">
+            <p class="tag">BQ2 · Type 2 · Nicolás Bobadilla</p>
+            <h3>Walking time per spot</h3>
+            <p class="question">What is the walking time from each available spot to the driver's destination entrance?</p>
+          </header>
+          <div class="card-body" id="bq2"></div>
+        </article>
+        <article class="card" data-bq="bq3">
+          <header class="card-head">
+            <p class="tag">BQ3 · Type 3 · Felipe Sales</p>
+            <h3>Filter usage this month</h3>
+            <p class="question">How many times per month does an active user apply each filter, and what percentage has never used one of them?</p>
+          </header>
+          <div class="card-body" id="bq3"></div>
+        </article>
+        <article class="card" data-bq="bq6">
+          <header class="card-head">
+            <p class="tag">BQ6 · Type 2 · Rodrigo García</p>
+            <h3>Personal reservation lead time</h3>
+            <p class="question">How far in advance should each user reserve so the reservation is still valid on arrival, based on their own trips?</p>
+          </header>
+          <div class="card-body" id="bq6"></div>
+        </article>
+        <article class="card wide" data-bq="bq4">
+          <header class="card-head">
+            <p class="tag">BQ4 · Type 4 · Julián Bohórquez</p>
+            <h3>Unmet demand by day and hour</h3>
+            <p class="question">How many availability queries find no free spot on campus, by time slot and by the user's origin zone?</p>
+          </header>
+          <div class="card-body" id="bq4"></div>
+        </article>
+        <article class="card wide" data-bq="bq5">
+          <header class="card-head">
+            <p class="tag">BQ5 · Type * · Fabio Higuera</p>
+            <h3>Reservation window and held spots</h3>
+            <p class="question">Given the predicted occupancy and the no-show rate per level and time slot, what reservation window and how many held spots maximize fulfilled reservations?</p>
+          </header>
+          <div class="card-body" id="bq5"></div>
+        </article>
+      </div>
+    </section>
+
+    <footer class="foot muted">Data source: Moviles-Backend on Render, PostgreSQL on Neon. Every value is computed with SQL when the page refreshes.</footer>
+  </main>
+
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+</body>
+</html>
