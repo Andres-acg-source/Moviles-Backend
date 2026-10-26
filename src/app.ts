@@ -6,6 +6,7 @@ import { errorHandler, notFound, requestLogger } from './middleware/http.js';
 import { analyticsRoutes } from './routes/analytics.js';
 import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 import { healthRoutes } from './routes/health.js';
 import { predictionRoutes } from './routes/predictions.js';
 import { reservationRoutes } from './routes/reservations.js';
@@ -38,6 +39,7 @@ export function createApp(options: AppOptions = {}) {
   app.use(cors());
   app.use(express.json({ limit: '100kb' }));
   app.use(healthRoutes());
+  app.use(dashboardRoutes());
   const api = express.Router();
   api.use(authRoutes(limiter(options.authLimitPerMinute ?? 10)));
   api.use(catalogRoutes());

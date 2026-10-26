@@ -34,6 +34,7 @@ src/
   services/          business logic
   analytics/         one file per analytics section / BQ
   simulation/        occupancy source, simulator, history, demo scenarios
+public/dashboard/    team dashboard served at /dashboard/ (plain HTML, CSS and SVG charts)
 scripts/smoke.ts     end-to-end smoke test against a running server
 test/                integration tests (one temporary schema per file)
 ```
@@ -56,7 +57,7 @@ On startup, the server does the following:
 3. Generates 4 weeks of simulated history the first time.
 4. Starts the simulator, which runs a tick every 60 seconds.
 
-The API listens on `http://localhost:3000`.
+The API listens on `http://localhost:3000` and the analytics dashboard on `http://localhost:3000/dashboard/`.
 
 For an Android emulator, use `http://10.0.2.2:3000`. For a physical device, use the computer's LAN IP.
 
