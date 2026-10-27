@@ -189,6 +189,36 @@ function hbars(container, items, { format = fmtInt, max, valueLabel = '', color 
   });
 }
 
+/** Funnel: horizontal bars on an ordinal ramp, first step darkest. */
+function funnel(container, steps) {
+  return chart(container, (node, width) => {
+    const labelWidth = Math.min(170, Math.max(132, Math.round(width * 0.34)));
+    const valueWidth = 96;
+    const rowHeight = 42;
+    const barHeight = 22;
+    const plotWidth = Math.max(40, width - labelWidth - valueWidth);
+    const first = steps[0].count || 1;
+    const height = steps.length * rowHeight;
+    const svg = s('svg', { width, height, role: 'img', 'aria-label': steps.map(step => `${step.label}: ${step.count}`).join('; ') }, node);
+    steps.forEach((step, index) => {
+      const y = index * rowHeight;
+      const middle = y + rowHeight / 2;
+      const color = css(`--step-${index + 1}`);
+      fit(text(svg, step.label, { x: labelWidth - 10, y: middle, 'text-anchor': 'end', 'dominant-baseline': 'middle' }), labelWidth - 14);
+      const barWidth = step.count > 0 ? Math.max(2, (step.count / first) * plotWidth) : 0;
+      const group = s('g', { class: 'mark' }, svg);
+      s('rect', { class: 'hit', x: 0, y, width, height: rowHeight }, group);
+      if (barWidth > 0) s('path', { d: barPath(labelWidth, middle - barHeight / 2, barWidth, barHeight), fill: color }, group);
+      const share = index === 0 ? '' : ` · ${fmtPct(step.fromPrevious)}`;
+      text(svg, `${fmtInt(step.count)}${share}`, { x: labelWidth + barWidth + 8, y: middle, 'dominant-baseline': 'middle', class: 'value-text' });
+      const rows = [{ value: fmtInt(step.count), label: 'user-days', color }];
+      if (index > 0) rows.push({ value: fmtPct(step.fromPrevious), label: 'of the previous step' }, { value: fmtPct(step.count / first), label: 'of those who checked availability' });
+      bindTip(group, step.label, rows);
+    });
+    s('line', { x1: labelWidth, x2: labelWidth, y1: 0, y2: height, stroke: css('--axis'), 'stroke-width': 1 }, svg);
+  });
+}
+
 /** Line chart with one y axis and a crosshair. series: [{ name, color, values: (number|null)[] }] */
 function lines(container, labels, series, { format = fmtInt, yMax, xLabel = value => value, integer = false } = {}) {
   return chart(container, (node, width) => {
@@ -353,6 +383,48 @@ function renderKpis(summary) {
   );
 }
 
+const FAILURE_LABELS = {
+  spot_taken: 'Spot taken',
+  already_active: 'Already reserved',
+  expired: 'Hold expired',
+  offline: 'No connection',
+  server_error: 'Server error',
+  other: 'Other'
+};
+
+function renderBq7(container, funnelData) {
+  const [viewed, , , reserved] = funnelData.steps;
+  if (!viewed.count) {
+    empty(container, 'No funnel events yet. Find a spot and Reserve send them when a signed-in user checks availability.');
+    return;
+  }
+  const failures = funnelData.failures;
+  const drop = funnelData.biggestDrop;
+  stats(container, [
+    { label: 'Conversion', value: fmtPct(funnelData.conversionRate), note: `${fmtInt(reserved.count)} of ${fmtInt(viewed.count)} user-days, last ${funnelData.windowDays} days` },
+    { label: 'Biggest drop', value: drop ? fmtPct(drop.dropRate) : '–', note: drop ? `${drop.from} → ${drop.to}` : 'No drop between steps' },
+    { label: 'Failed attempts', value: fmtInt(sum(failures.map(row => row.count))), note: failures[0] ? `Most common: ${FAILURE_LABELS[failures[0].reason] ?? failures[0].reason}` : 'None recorded' }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  funnel(block(split, 'Users at each step (one user on one day)'), funnelData.steps);
+  const reasons = block(split, 'Why a reservation attempt failed');
+  if (failures.length) {
+    hbars(reasons, failures.map(row => ({ label: FAILURE_LABELS[row.reason] ?? row.reason, value: row.count })), { valueLabel: 'attempts' });
+  } else {
+    empty(reasons, 'No failed attempts recorded.');
+  }
+  const trend = block(container, 'Last 14 days: users who checked availability and users who reserved');
+  const series = [
+    { name: 'Checked availability', color: css('--series-1'), values: funnelData.daily.map(day => day.viewed) },
+    { name: 'Reserved', color: css('--series-2'), values: funnelData.daily.map(day => day.reserved) }
+  ];
+  legend(trend, series.map(item => ({ label: item.name, color: item.color })), 'line');
+  lines(trend, funnelData.daily.map(day => day.day), series, { xLabel: day => day.slice(5), integer: true });
+  tableView(container, ['Platform', 'Checked', 'Opened a spot', 'Tapped confirm', 'Reserved', 'Conversion'],
+    funnelData.byPlatform.map(row => [row.platform, fmtInt(row.viewed), fmtInt(row.selected), fmtInt(row.confirmed), fmtInt(row.reserved), fmtPct(row.conversionRate)]), [1, 2, 3, 4, 5]);
+}
+
 function renderBq1(container, rows) {
   if (!rows.length) {
     empty(container, 'No map_loaded events yet.');
@@ -489,6 +561,7 @@ function renderBq5(container, data) {
 // ---------------------------------------------------------------- render, load, session
 
 const SECTIONS = [
+  ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq1', summary => summary.mapLoad, renderBq1],
   ['bq2', summary => summary.walkingTime, renderBq2],
   ['bq3', summary => summary.filterUsage, renderBq3],

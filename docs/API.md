@@ -428,6 +428,10 @@ Events used by the analytics:
 | `walking_time_viewed` | `levelCode`, `minutes`, `spotCode?`, `source?` | BQ2 |
 | `app_opened` | `platform?` (send with the token) | BQ3 |
 | `filter_applied` | `filter`: `available` \| `vip` \| `electric` \| `accessible` | BQ3 |
+| `availability_viewed` | `platform`, `screen?`, `levelCode?` (send with the token) | BQ7 |
+| `spot_selected` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
+| `reserve_confirm_tapped` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
+| `reserve_failed` | `platform`, `reason`: `spot_taken` \| `already_active` \| `expired` \| `offline` \| `server_error` \| `other` | BQ7 |
 
 ### GET /api/v1/analytics/summary
 
@@ -485,6 +489,7 @@ Section notes:
 | `unmetDemand` (BQ4) | Times a logged-in user saw a full campus, counted once per user and 15-minute slot. User ids are not exposed |
 | `reservationPolicy` (BQ5) | Last 28 days, by level and creation slot. See below |
 | `leadTime` (BQ6) | The personal advice of `/recommendations/lead-time` for every user with at least 3 finished reservations, grouped in `buckets`. `medianP80TravelMinutes` is the median of the users' 80th percentiles and `expiredShare` the share of finished user reservations that expired |
+| `conversionFunnel` (BQ7) | Last 28 days. The unit is one user on one Bogotá day. A step counts only if the previous one happened that day: `availability_viewed` → `spot_selected` → `reserve_confirm_tapped` → a user reservation created. `fromPrevious` is the share kept from the previous step, `biggestDrop` is the step that loses the largest share, `failures` counts `reserve_failed` by `reason` and `daily` covers the last 14 days |
 
 `reservationPolicy` fields:
 
@@ -498,6 +503,20 @@ Section notes:
   "holdMinutes": 15, "minReservations": 3, "usersWithAdvice": 7, "usersWithoutEnoughTrips": 1,
   "medianP80TravelMinutes": 15.2, "expiredShare": 0.114,
   "buckets": [ { "label": "Reserve when leaving", "users": 3 }, { "label": "1 to 5 min after leaving", "users": 4 } ]
+},
+"conversionFunnel": {
+  "windowDays": 28, "unit": "user-day",
+  "steps": [
+    { "key": "availability_viewed", "label": "Checked availability", "count": 81, "fromPrevious": null },
+    { "key": "spot_selected", "label": "Opened a spot", "count": 63, "fromPrevious": 0.778 },
+    { "key": "reserve_confirm_tapped", "label": "Tapped confirm", "count": 40, "fromPrevious": 0.635 },
+    { "key": "reservation_created", "label": "Reservation created", "count": 35, "fromPrevious": 0.875 }
+  ],
+  "conversionRate": 0.432,
+  "biggestDrop": { "from": "Opened a spot", "to": "Tapped confirm", "lost": 23, "dropRate": 0.365 },
+  "byPlatform": [ { "platform": "android", "viewed": 60, "selected": 47, "confirmed": 30, "reserved": 26, "conversionRate": 0.433 } ],
+  "failures": [ { "reason": "spot_taken", "count": 4 }, { "reason": "offline", "count": 1 } ],
+  "daily": [ { "day": "2026-10-25", "viewed": 5, "reserved": 0, "conversionRate": 0 } ]
 }
 ```
 

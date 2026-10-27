@@ -20,6 +20,11 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  /* ordinal ramp for the funnel, first step darkest */
+  --step-1: #104281;
+  --step-2: #256abf;
+  --step-3: #3987e5;
+  --step-4: #86b6ef;
   /* sequential blue for the heatmap, light to dark */
   --seq-0: #f4f5f7;
   --seq-1: #cde2fb;
@@ -50,6 +55,10 @@
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --step-1: #9ec5f4;
+    --step-2: #5598e7;
+    --step-3: #256abf;
+    --step-4: #184f95;
     --seq-0: #222220;
     --seq-1: #0d366b;
     --seq-2: #104281;
