@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -217,4 +217,33 @@ test('lead time BQ6 overview groups the personal advice of every user', async ()
   assert.equal(body.expiredShare, 0.125);
   assert.deepEqual(body.buckets.map((bucket: { users: number }) => bucket.users), [1, 0, 0, 1, 0]);
   assert.equal(body.medianP80TravelMinutes, 17.1);
+});
+
+test('conversion funnel BQ7 follows each user and day through the reservation steps', async () => {
+  const [a, b, c, d] = [await createUser(), await createUser(), await createUser(), await createUser()];
+  const steps = async (user: { token: string }, names: string[], platform = 'android') => {
+    for (const name of names) assert.equal((await track(name, { platform }, user.token)).status, 202);
+  };
+  await steps(a, ['availability_viewed', 'spot_selected', 'reserve_confirm_tapped']);
+  await steps(b, ['availability_viewed', 'spot_selected', 'reserve_confirm_tapped']);
+  await steps(c, ['availability_viewed', 'spot_selected'], 'ios');
+  await steps(d, ['availability_viewed']);
+  await track('spot_selected', { platform: 'android' });
+  await track('reserve_failed', { reason: 'spot_taken' }, b.token);
+  await track('reserve_failed', { reason: 'spot_taken' }, b.token);
+  await track('reserve_failed', { reason: 'offline' }, c.token);
+  await db().query(`INSERT INTO reservations (user_id, spot_id, source, status, expires_at) VALUES ($1, 'P1-A-01', 'user', 'active', now() + interval '15 minutes')`, [a.id]);
+  await db().query(`INSERT INTO reservations (user_id, spot_id, source, status, expires_at) VALUES (NULL, 'P1-A-02', 'sim', 'active', now() + interval '15 minutes')`);
+
+  const body = (await summary()).conversionFunnel;
+  assert.equal(body.windowDays, 28);
+  assert.deepEqual(body.steps.map((step: { count: number }) => step.count), [4, 3, 2, 1]);
+  assert.deepEqual(body.steps.map((step: { fromPrevious: number | null }) => step.fromPrevious), [null, 0.75, 0.667, 0.5]);
+  assert.equal(body.conversionRate, 0.25);
+  assert.deepEqual(body.biggestDrop, { from: 'Tapped confirm', to: 'Reservation created', lost: 1, dropRate: 0.5 });
+  assert.deepEqual(body.failures, [{ reason: 'spot_taken', count: 2 }, { reason: 'offline', count: 1 }]);
+  const android = body.byPlatform.find((row: { platform: string }) => row.platform === 'android');
+  assert.deepEqual(android, { platform: 'android', viewed: 3, selected: 2, confirmed: 2, reserved: 1, conversionRate: 0.333 });
+  assert.equal(body.daily.length, 14);
+  assert.deepEqual(body.daily.at(-1), { day: body.daily.at(-1).day, viewed: 4, reserved: 1, conversionRate: 0.25 });
 });
