@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionUsage', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -46,7 +46,8 @@ test('telemetry rejects invalid names and properties', async () => {
     { name: 'ok_event', properties: { nested: { a: 1 } } },
     { name: 'ok_event', properties: { list: [1, 2] } },
     { name: 'ok_event', properties: { text: 'x'.repeat(201) } },
-    { name: 'ok_event', properties: { empty: null } }
+    { name: 'ok_event', properties: { empty: null } },
+    { name: 'ok_event', properties: { occurredAt: 'not-a-timestamp' } }
   ];
   for (const body of invalid) assert.equal((await api('POST', '/api/v1/telemetry', { body })).status, 400, JSON.stringify(body).slice(0, 60));
   const valid = { name: 'ok_event', properties: { ...Object.fromEntries(Array.from({ length: 19 }, (_, index) => [`k${index}`, index])), text: 'x'.repeat(200) } };
@@ -97,6 +98,53 @@ test('map load BQ1 groups by device, OS version and level', async () => {
     { deviceModel: 'Pixel 8', osVersion: '15', levelCode: 'P2', loads: 1, avgMs: 250, p90Ms: 250, failureRate: 0 },
     { deviceModel: 'iPhone 15', osVersion: '18.1', levelCode: 'P1', loads: 10, avgMs: 550, p90Ms: 910, failureRate: 0.2 }
   ]);
+});
+
+test('prediction usage BQ8 classifies each user-day and only counts real check-ins', async () => {
+  const [planned, liveOnly, simulatedOnly] = await Promise.all([createUser(), createUser(), createUser()]);
+  const addEvent = (userId: string, name: string, createdAt: string, properties = {}) => db().query(
+    'INSERT INTO telemetry_events (user_id, name, properties, created_at) VALUES ($1, $2, $3, $4)',
+    [userId, name, properties, createdAt]
+  );
+
+  await addEvent(planned.id, 'forecast_viewed', '2026-10-14T09:00:00Z', { occurredAt: '2026-10-12T12:00:00Z' });
+  await addEvent(planned.id, 'forecast_viewed', '2026-10-14T09:00:01Z', { occurredAt: '2026-10-12T12:10:00Z' });
+  await addEvent(planned.id, 'availability_viewed', '2026-10-14T09:00:02Z', { occurredAt: '2026-10-12T13:00:00Z' });
+  await addEvent(planned.id, 'forecast_viewed', '2026-10-14T09:00:03Z', { occurredAt: '2026-10-13T12:00:00Z' });
+
+  await addEvent(liveOnly.id, 'availability_viewed', '2026-10-12T13:00:00Z', { occurredAt: '2026-10-12T13:00:00Z' });
+  await addEvent(liveOnly.id, 'forecast_viewed', '2026-10-12T14:00:00Z', { occurredAt: '2026-10-12T14:00:00Z' });
+  await addEvent(simulatedOnly.id, 'map_loaded', '2026-10-12T13:00:00Z', { success: true });
+
+  await db().query(
+    `INSERT INTO reservations (user_id, spot_id, source, status, created_at, expires_at, checked_in_at)
+     VALUES ($1, 'P1-A-01', 'user', 'fulfilled', '2026-10-12T12:30:00Z', '2026-10-12T13:00:00Z', '2026-10-12T13:30:00Z'),
+            ($2, 'P1-A-02', 'sim', 'fulfilled', '2026-10-12T12:30:00Z', '2026-10-12T13:00:00Z', '2026-10-12T13:30:00Z')`,
+    [planned.id, simulatedOnly.id]
+  );
+
+  const body = (await summary()).predictionUsage;
+  assert.deepEqual(body, {
+    totalSessions: 4,
+    forecastSessions: 2,
+    liveOnlySessions: 2,
+    forecastShare: 0.5,
+    forecastParkingRate: 0.5,
+    liveOnlyParkingRate: 0,
+    parkingRateDifference: 0.5
+  });
+});
+
+test('prediction usage BQ8 returns null rates when there is no real telemetry', async () => {
+  assert.deepEqual((await summary()).predictionUsage, {
+    totalSessions: 0,
+    forecastSessions: 0,
+    liveOnlySessions: 0,
+    forecastShare: null,
+    forecastParkingRate: null,
+    liveOnlyParkingRate: null,
+    parkingRateDifference: null
+  });
 });
 
 test('filter usage BQ3 for the current month', async () => {

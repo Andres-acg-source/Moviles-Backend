@@ -425,6 +425,29 @@ function renderBq6(container, data) {
   hbars(block(container, 'When users are told to reserve'), data.buckets.map(bucket => ({ label: bucket.label, value: bucket.users })), { valueLabel: 'users' });
 }
 
+function renderBq8(container, data) {
+  if (!data.totalSessions) {
+    empty(container, 'No forecast or live-availability sessions recorded yet.');
+    return;
+  }
+  stats(container, [
+    { label: 'User-days analysed', value: fmtInt(data.totalSessions) },
+    { label: 'Forecast checked first', value: fmtPct(data.forecastShare), note: `${fmtInt(data.forecastSessions)} user-days` },
+    { label: 'Parked after forecast', value: fmtPct(data.forecastParkingRate), note: 'confirmed reservation check-ins' },
+    { label: 'Parked with live-only use', value: fmtPct(data.liveOnlyParkingRate), note: `${fmtInt(data.liveOnlySessions)} user-days` }
+  ]);
+  if (data.forecastParkingRate !== null && data.liveOnlyParkingRate !== null) {
+    hbars(block(container, 'Confirmed parking rate by usage'), [
+      { label: 'Forecast first', value: data.forecastParkingRate, color: css('--series-1'), note: `${fmtInt(data.forecastSessions)} user-days` },
+      { label: 'Live availability only', value: data.liveOnlyParkingRate, color: css('--series-2'), note: `${fmtInt(data.liveOnlySessions)} user-days` }
+    ], { format: value => fmtPct(value), max: 1, valueLabel: 'checked in' });
+  }
+  tableView(container, ['Usage group', 'User-days', 'Share', 'Check-in rate'], [
+    ['Forecast before live availability', fmtInt(data.forecastSessions), fmtPct(data.forecastShare), fmtPct(data.forecastParkingRate)],
+    ['Live availability only', fmtInt(data.liveOnlySessions), fmtPct(data.totalSessions ? data.liveOnlySessions / data.totalSessions : null), fmtPct(data.liveOnlyParkingRate)]
+  ], [1, 2, 3]);
+}
+
 function renderBq4(container, data) {
   if (!data.total) {
     empty(container, 'No unmet demand recorded. It appears when every level is full and a user asks for availability.');
@@ -494,7 +517,8 @@ const SECTIONS = [
   ['bq3', summary => summary.filterUsage, renderBq3],
   ['bq6', summary => summary.leadTime, renderBq6],
   ['bq4', summary => summary.unmetDemand, renderBq4],
-  ['bq5', summary => summary.reservationPolicy, renderBq5]
+  ['bq5', summary => summary.reservationPolicy, renderBq5],
+  ['bq8', summary => summary.predictionUsage, renderBq8]
 ];
 
 function render(summary) {

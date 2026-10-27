@@ -402,6 +402,7 @@ With fewer than 3 reservations, `p80TravelMinutes`, `expiredCount` and `suggeste
 ### POST /api/v1/telemetry
 
 JWT: Optional. When the token is valid, the event is stored with the user id. This is required for `app_opened` to count toward BQ3. Rate limited.
+The Android telemetry client includes `occurredAt` as a UTC ISO timestamp so queued offline events retain their original ordering and day. Older clients may omit it; analytics then use server receipt time.
 
 | Field | Rules |
 |---|---|
@@ -425,6 +426,8 @@ Events used by the analytics:
 | Event | Properties | Business question |
 |---|---|---|
 | `map_loaded` | `levelCode`, `durationMs`, `success`, `errorType?`, `deviceModel`, `osVersion`, `platform` | BQ1 |
+| `forecast_viewed` | `source`: `home_forecast` \| `arrival_time_changed`, `occurredAt` (UTC ISO timestamp) | BQ8 |
+| `availability_viewed` | `source`: `level_map` \| `find_spot`, `levelCode?`, `occurredAt` (UTC ISO timestamp) | BQ8 |
 | `walking_time_viewed` | `levelCode`, `minutes`, `spotCode?`, `source?` | BQ2 |
 | `app_opened` | `platform?` (send with the token) | BQ3 |
 | `filter_applied` | `filter`: `available` \| `vip` \| `electric` \| `accessible` | BQ3 |
@@ -448,6 +451,15 @@ JWT: Yes.
   "mapLoad": [
     { "deviceModel": "iPhone 15", "osVersion": "18.1", "levelCode": "P1", "loads": 10, "avgMs": 550, "p90Ms": 910, "failureRate": 0.2 }
   ],
+  "predictionUsage": {
+    "totalSessions": 120,
+    "forecastSessions": 45,
+    "liveOnlySessions": 75,
+    "forecastShare": 0.375,
+    "forecastParkingRate": 0.422,
+    "liveOnlyParkingRate": 0.28,
+    "parkingRateDifference": 0.142
+  },
   "filterUsage": {
     "month": "2026-10",
     "activeUsers": 4,
@@ -481,6 +493,7 @@ Section notes:
 | `parking` | Current spot counts. `total` is usable capacity and equals `free + reserved + occupied`; `disabled` is reported separately |
 | `reservations` | All-time reservation counts by status, split by source (`user` and `sim`) |
 | `mapLoad` (BQ1) | Grouped by `deviceModel` + `osVersion` + `levelCode`. `p90Ms` uses `percentile_cont(0.9)`. `failureRate` is the share of loads with `success: false` |
+| `predictionUsage` (BQ8) | Groups authenticated telemetry by event occurrence time and Bogotá calendar day (falling back to server receipt time for older events). A day is forecast-led only when the first forecast event precedes the first successful live-availability event; days with live availability and no earlier forecast are live-only. Parking requires a user reservation check-in that day; simulated reservations are excluded. Rates are `null` when the group has no days |
 | `filterUsage` (BQ3) | Current Bogotá month. `activeUsers` counts distinct users who sent `app_opened` with a token. `percentNeverUsed` is the percentage of active users who never applied that filter this month |
 | `unmetDemand` (BQ4) | Times a logged-in user saw a full campus, counted once per user and 15-minute slot. User ids are not exposed |
 | `reservationPolicy` (BQ5) | Last 28 days, by level and creation slot. See below |

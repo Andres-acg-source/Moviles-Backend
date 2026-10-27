@@ -6,6 +6,10 @@ export const telemetrySchema = z.object({
   name: z.string().min(1).max(100).regex(/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/, 'name must be snake_case'),
   properties: z.record(z.string().min(1).max(40), z.union([z.string().max(200), z.number().finite(), z.boolean()]))
     .refine(value => Object.keys(value).length <= 20, 'properties can have at most 20 keys')
+    .refine(
+      value => value.occurredAt === undefined || z.string().datetime({ offset: true }).safeParse(value.occurredAt).success,
+      'occurredAt must be an ISO timestamp with a timezone'
+    )
     .default({})
 });
 
