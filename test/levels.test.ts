@@ -23,7 +23,7 @@ test('buildings and nearby lots', async () => {
   assert.deepEqual(Object.keys(nearby.body[0]).sort(), ['address', 'currency', 'id', 'name', 'ratePerHour', 'walkMinutes']);
 });
 
-test('level counts exclude disabled spots', async () => {
+test('level counts report unavailable spots separately from usable capacity', async () => {
   await setSpots(['P1-A-01', 'P1-A-02', 'P1-A-03', 'P1-A-04', 'P1-A-05'], 'reserved');
   await setSpots(['P1-B-01', 'P1-B-02', 'P1-B-03'], 'occupied');
   await setSpots(['P2-A-01'], 'disabled');
@@ -31,11 +31,19 @@ test('level counts exclude disabled spots', async () => {
   assert.equal(response.status, 200);
   assert.equal(response.body.campusFull, false);
   assert.ok(Date.parse(response.body.generatedAt));
-  assert.deepEqual(response.body.levels.map(({ name, ...level }: { name: string }) => level), [
-    { code: 'P1', underground: false, total: 60, free: 52, reserved: 5, occupied: 3 },
-    { code: 'P2', underground: true, total: 47, free: 47, reserved: 0, occupied: 0 },
-    { code: 'P3', underground: true, total: 48, free: 48, reserved: 0, occupied: 0 }
+  const levels = response.body.levels.map(({ name, ...level }: { name: string }) => level);
+  assert.deepEqual(levels, [
+    { code: 'P1', underground: false, total: 60, free: 52, reserved: 5, occupied: 3, disabled: 0 },
+    { code: 'P2', underground: true, total: 47, free: 47, reserved: 0, occupied: 0, disabled: 1 },
+    { code: 'P3', underground: true, total: 48, free: 48, reserved: 0, occupied: 0, disabled: 0 }
   ]);
+  for (const level of levels) {
+    assert.equal(level.total, level.free + level.reserved + level.occupied);
+  }
+  assert.equal(levels[1].total + levels[1].disabled, 48);
+  const p2Spots = await api('GET', '/api/v1/levels/P2/spots');
+  assert.equal(p2Spots.body.length, 48);
+  assert.equal(p2Spots.body.filter((spot: { status: string }) => spot.status === 'disabled').length, 1);
 });
 
 test('campusFull is true only when no spot is free', async () => {

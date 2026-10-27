@@ -70,7 +70,8 @@ test('parking and reservations sections', async () => {
     [user.id]
   );
   const body = await summary();
-  assert.deepEqual(body.parking, { total: 155, free: 151, reserved: 2, occupied: 2, accessibleFree: 6, evFree: 6 });
+  assert.deepEqual(body.parking, { total: 155, free: 151, reserved: 2, occupied: 2, disabled: 1, accessibleFree: 6, evFree: 6 });
+  assert.equal(body.parking.total, body.parking.free + body.parking.reserved + body.parking.occupied);
   assert.deepEqual(body.reservations.user, { active: 1, fulfilled: 0, released: 0, cancelled: 1, expired: 0 });
   assert.deepEqual(body.reservations.sim, { active: 1, fulfilled: 0, released: 0, cancelled: 0, expired: 2 });
   assert.deepEqual(body.reservations.total, { active: 2, fulfilled: 0, released: 0, cancelled: 1, expired: 2 });

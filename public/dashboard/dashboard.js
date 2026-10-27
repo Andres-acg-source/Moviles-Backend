@@ -344,7 +344,7 @@ function renderKpis(summary) {
     h('span', { class: 'label', text: label }), h('span', { class: 'value', text: value }), extra ?? null, note ? h('span', { class: 'note', text: note }) : null
   ]);
   $('kpis').replaceChildren(
-    tile('Live occupancy', fmtPct(occupancy), `${fmtInt(parking.occupied)} occupied and ${fmtInt(parking.reserved)} reserved out of ${fmtInt(parking.total)} spots`, meter, true),
+    tile('Live occupancy', fmtPct(occupancy), `${fmtInt(parking.occupied)} occupied and ${fmtInt(parking.reserved)} reserved out of ${fmtInt(parking.total)} usable spots · ${fmtInt(parking.disabled)} unavailable`, meter, true),
     tile('Free spots', fmtInt(parking.free), 'available right now'),
     tile('Accessible free', fmtInt(parking.accessibleFree), 'accessible spots'),
     tile('Electric free', fmtInt(parking.evFree), 'charging spots'),
