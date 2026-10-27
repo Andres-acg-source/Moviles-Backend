@@ -175,7 +175,7 @@ JWT: Optional.
 |---|---|
 | `zone` | Optional. The user's rounded location as `lat,lng` with 2 decimals, for example `4.60,-74.07`. When the campus is full and the request has a valid token, the backend records one unmet-demand entry per user and 15-minute slot (BQ4) |
 
-`total` excludes `disabled` spots. `campusFull` is `true` when no level has a `free` spot.
+`total` is the usable capacity and equals `free + reserved + occupied`. `disabled` counts spots that remain in the physical map but cannot be used; physical inventory equals `total + disabled`. `campusFull` is `true` when no level has a `free` spot.
 
 ```http
 GET /api/v1/levels?zone=4.60,-74.07
@@ -188,9 +188,9 @@ Authorization: Bearer eyJhbGciOi...
   "generatedAt": "2026-10-02T04:35:41.070Z",
   "campusFull": false,
   "levels": [
-    { "code": "P1", "name": "Level P1", "underground": false, "total": 60, "free": 52, "reserved": 0, "occupied": 8 },
-    { "code": "P2", "name": "Level P2", "underground": true, "total": 48, "free": 43, "reserved": 0, "occupied": 5 },
-    { "code": "P3", "name": "Level P3", "underground": true, "total": 48, "free": 45, "reserved": 0, "occupied": 3 }
+    { "code": "P1", "name": "Level P1", "underground": false, "total": 60, "free": 52, "reserved": 0, "occupied": 8, "disabled": 0 },
+    { "code": "P2", "name": "Level P2", "underground": true, "total": 48, "free": 43, "reserved": 0, "occupied": 5, "disabled": 0 },
+    { "code": "P3", "name": "Level P3", "underground": true, "total": 48, "free": 45, "reserved": 0, "occupied": 3, "disabled": 0 }
   ]
 }
 ```
@@ -438,7 +438,7 @@ JWT: Yes.
 {
   "generatedAt": "2026-10-02T04:35:42.000Z",
   "eventCounts": { "map_loaded": 11, "walking_time_viewed": 3 },
-  "parking": { "total": 156, "free": 140, "reserved": 0, "occupied": 16, "accessibleFree": 7, "evFree": 6 },
+  "parking": { "total": 156, "free": 140, "reserved": 0, "occupied": 16, "disabled": 0, "accessibleFree": 7, "evFree": 6 },
   "reservations": {
     "user": { "active": 1, "fulfilled": 0, "released": 3, "cancelled": 1, "expired": 0 },
     "sim": { "active": 2, "fulfilled": 5, "released": 6120, "cancelled": 0, "expired": 1530 },
@@ -478,7 +478,7 @@ Section notes:
 
 | Section | Notes |
 |---|---|
-| `parking` | Current spot counts. `total` excludes disabled spots |
+| `parking` | Current spot counts. `total` is usable capacity and equals `free + reserved + occupied`; `disabled` is reported separately |
 | `reservations` | All-time reservation counts by status, split by source (`user` and `sim`) |
 | `mapLoad` (BQ1) | Grouped by `deviceModel` + `osVersion` + `levelCode`. `p90Ms` uses `percentile_cont(0.9)`. `failureRate` is the share of loads with `success: false` |
 | `filterUsage` (BQ3) | Current Bogotá month. `activeUsers` counts distinct users who sent `app_opened` with a token. `percentNeverUsed` is the percentage of active users who never applied that filter this month |

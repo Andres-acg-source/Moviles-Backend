@@ -13,12 +13,13 @@ export async function buildings() {
 }
 
 export async function levelSummary() {
-  const { rows } = await db().query<{ code: string; name: string; underground: boolean; total: number; free: number; reserved: number; occupied: number }>(
+  const { rows } = await db().query<{ code: string; name: string; underground: boolean; total: number; free: number; reserved: number; occupied: number; disabled: number }>(
     `SELECT l.code, l.name, l.underground,
             count(s.id) FILTER (WHERE s.status <> 'disabled')::int AS total,
             count(s.id) FILTER (WHERE s.status = 'free')::int AS free,
             count(s.id) FILTER (WHERE s.status = 'reserved')::int AS reserved,
-            count(s.id) FILTER (WHERE s.status = 'occupied')::int AS occupied
+            count(s.id) FILTER (WHERE s.status = 'occupied')::int AS occupied,
+            count(s.id) FILTER (WHERE s.status = 'disabled')::int AS disabled
        FROM levels l LEFT JOIN spots s ON s.level_code = l.code
       GROUP BY l.code ORDER BY l.sort`
   );
