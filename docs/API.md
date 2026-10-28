@@ -103,15 +103,15 @@ JWT: No. Rate limited.
 
 | Field | Rules |
 |---|---|
-| `email` | Valid email. It is trimmed and lowercased |
-| `password` | 6 to 128 characters |
-| `name` | Optional, 1 to 80 characters |
+| `email` | Valid email of up to 100 characters from a real provider: `gmail.com`, `outlook.com`, `hotmail.com`, `live.com`, `yahoo.com`, `icloud.com`, `me.com`, `proton.me`, `protonmail.com` or `uniandes.edu.co`. It is trimmed and lowercased |
+| `password` | 8 to 64 characters with an uppercase letter, a lowercase letter, a number and a symbol, without spaces |
+| `name` | Optional, 2 to 30 characters. Letters, spaces, apostrophes, dots and hyphens, starting with a letter, without double spaces or the same letter three times in a row |
 
 ```http
 POST /api/v1/auth/register
 Content-Type: application/json
 
-{ "name": "Laura", "email": "laura@uniandes.edu.co", "password": "secret123" }
+{ "name": "Laura", "email": "laura@uniandes.edu.co", "password": "Secret12!" }
 ```
 
 ```json

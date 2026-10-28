@@ -17,23 +17,55 @@ before(async () => {
 after(async () => { await server.close(); await cleanup(); });
 
 test('register, login and me', async () => {
-  const registered = await api('POST', '/api/v1/auth/register', { body: { name: 'Nicolas', email: ' Driver@Uniandes.edu.co ', password: 'secret123' } });
+  const registered = await api('POST', '/api/v1/auth/register', { body: { name: 'Nicolas', email: ' Driver@Uniandes.edu.co ', password: 'Secret12!' } });
   assert.equal(registered.status, 201);
   assert.equal(registered.body.user.email, 'driver@uniandes.edu.co');
   assert.equal(registered.body.user.name, 'Nicolas');
   assert.ok(registered.body.user.id);
-  assert.equal((await api('POST', '/api/v1/auth/register', { body: { email: 'driver@uniandes.edu.co', password: 'other123' } })).status, 409);
-  assert.equal((await api('POST', '/api/v1/auth/register', { body: { email: 'not-an-email', password: 'secret123' } })).status, 400);
+  assert.equal((await api('POST', '/api/v1/auth/register', { body: { email: 'driver@uniandes.edu.co', password: 'Other123!' } })).status, 409);
+  assert.equal((await api('POST', '/api/v1/auth/register', { body: { email: 'not-an-email', password: 'Secret12!' } })).status, 400);
   const short = await api('POST', '/api/v1/auth/register', { body: { email: 'short@uniandes.edu.co', password: '123' } });
   assert.equal(short.status, 400);
   assert.ok(short.body.details);
   const me = await api('GET', '/api/v1/auth/me', { token: registered.body.token });
   assert.deepEqual(me.body, { id: registered.body.user.id, email: 'driver@uniandes.edu.co', name: 'Nicolas' });
-  const login = await api('POST', '/api/v1/auth/login', { body: { email: 'DRIVER@uniandes.edu.co', password: 'secret123' } });
+  const login = await api('POST', '/api/v1/auth/login', { body: { email: 'DRIVER@uniandes.edu.co', password: 'Secret12!' } });
   assert.equal(login.status, 200);
   assert.equal(login.body.user.id, registered.body.user.id);
   assert.equal((await api('POST', '/api/v1/auth/login', { body: { email: 'driver@uniandes.edu.co', password: 'wrong-pass' } })).status, 401);
   assert.equal((await api('POST', '/api/v1/auth/login', { body: { email: 'nobody@uniandes.edu.co', password: 'secret123' } })).status, 401);
+});
+
+test('register validates name, email provider and password strength', async () => {
+  const unlimited = await startServer({ authLimitPerMinute: 100 });
+  const call = client(unlimited.base);
+  const register = (body: Record<string, string>) => call('POST', '/api/v1/auth/register', { body: { name: 'Laura Gómez', email: 'laura@gmail.com', password: 'Secret12!', ...body } });
+  try {
+    const rejected: Record<string, string>[] = [
+      { name: 'aaaa' },
+      { name: 'Laura123' },
+      { name: 'Laura  Gómez' },
+      { name: 'L' },
+      { name: `${'Ana Lucia '.repeat(3)}Bo` },
+      { email: 'laura@fake-mail.com' },
+      { email: 'laura@gmial.com' },
+      { email: `${'x'.repeat(95)}@gmail.com` },
+      { password: 'secret12!' },
+      { password: 'SECRET12!' },
+      { password: 'Secretos!' },
+      { password: 'Secret123' },
+      { password: 'Secret 12!' },
+      { password: 'Se1!' },
+      { password: `Aa1!${'x'.repeat(61)}` }
+    ];
+    for (const body of rejected) assert.equal((await register(body)).status, 400, JSON.stringify(body).slice(0, 60));
+    const accepted = await register({ name: "María José O'Neil", email: ' Laura@Outlook.com ' });
+    assert.equal(accepted.status, 201);
+    assert.equal(accepted.body.user.email, 'laura@outlook.com');
+    assert.equal((await call('POST', '/api/v1/auth/register', { body: { email: 'noname@icloud.com', password: 'Secret12!' } })).status, 201);
+  } finally {
+    await unlimited.close();
+  }
 });
 
 test('auth rejects missing, malformed and foreign tokens', async () => {
