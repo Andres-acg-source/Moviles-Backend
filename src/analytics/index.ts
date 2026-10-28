@@ -4,15 +4,16 @@ import { filterUsage } from './filter-usage.js';
 import { leadTimeOverview } from './lead-time-overview.js';
 import { mapLoad } from './map-load.js';
 import { parking } from './parking.js';
+import { predictionUsage } from './prediction-usage.js';
 import { reservationPolicy } from './reservation-policy.js';
 import { reservations } from './reservations.js';
 import { unmetDemand } from './unmet-demand.js';
 import { walkingTime } from './walking-time.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
-    leadTimeOverview(), conversionFunnel()
+    leadTimeOverview(), conversionFunnel(), predictionUsage()
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -25,6 +26,7 @@ export async function analyticsSummary() {
     unmetDemand: unmet,
     reservationPolicy: policy,
     leadTime: lead,
-    conversionFunnel: funnel
+    conversionFunnel: funnel,
+    predictionUsage: prediction
   };
 }
