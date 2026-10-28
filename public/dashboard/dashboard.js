@@ -425,6 +425,29 @@ function renderBq7(container, funnelData) {
     funnelData.byPlatform.map(row => [row.platform, fmtInt(row.viewed), fmtInt(row.selected), fmtInt(row.confirmed), fmtInt(row.reserved), fmtPct(row.conversionRate)]), [1, 2, 3, 4, 5]);
 }
 
+function renderBq8(container, data) {
+  if (!data.totalSessions) {
+    empty(container, 'No forecast or live-availability sessions recorded yet.');
+    return;
+  }
+  stats(container, [
+    { label: 'User-days analysed', value: fmtInt(data.totalSessions) },
+    { label: 'Forecast checked first', value: fmtPct(data.forecastShare), note: `${fmtInt(data.forecastSessions)} user-days` },
+    { label: 'Parked after forecast', value: fmtPct(data.forecastParkingRate), note: 'confirmed reservation check-ins' },
+    { label: 'Parked with live-only use', value: fmtPct(data.liveOnlyParkingRate), note: `${fmtInt(data.liveOnlySessions)} user-days` }
+  ]);
+  if (data.forecastParkingRate !== null && data.liveOnlyParkingRate !== null) {
+    hbars(block(container, 'Confirmed parking rate by usage'), [
+      { label: 'Forecast first', value: data.forecastParkingRate, color: css('--series-1'), note: `${fmtInt(data.forecastSessions)} user-days` },
+      { label: 'Live availability only', value: data.liveOnlyParkingRate, color: css('--series-2'), note: `${fmtInt(data.liveOnlySessions)} user-days` }
+    ], { format: value => fmtPct(value), max: 1, valueLabel: 'checked in' });
+  }
+  tableView(container, ['Usage group', 'User-days', 'Share', 'Check-in rate'], [
+    ['Forecast before live availability', fmtInt(data.forecastSessions), fmtPct(data.forecastShare), fmtPct(data.forecastParkingRate)],
+    ['Live availability only', fmtInt(data.liveOnlySessions), fmtPct(data.totalSessions ? data.liveOnlySessions / data.totalSessions : null), fmtPct(data.liveOnlyParkingRate)]
+  ], [1, 2, 3]);
+}
+
 function renderBq1(container, rows) {
   if (!rows.length) {
     empty(container, 'No map_loaded events yet.');
@@ -562,6 +585,7 @@ function renderBq5(container, data) {
 
 const SECTIONS = [
   ['bq7', summary => summary.conversionFunnel, renderBq7],
+  ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq1', summary => summary.mapLoad, renderBq1],
   ['bq2', summary => summary.walkingTime, renderBq2],
   ['bq3', summary => summary.filterUsage, renderBq3],
