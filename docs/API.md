@@ -429,7 +429,7 @@ Events used by the analytics:
 | `walking_time_viewed` | `levelCode`, `minutes`, `spotCode?`, `source?` | BQ2 |
 | `app_opened` | `platform?` (send with the token) | BQ3 |
 | `filter_applied` | `filter`: `available` \| `vip` \| `electric` \| `accessible` | BQ3 |
-| `forecast_viewed` | `platform`, `source`: `home_forecast` \| `arrival_time_changed` (send with the token) | BQ8 |
+| `forecast_viewed` | `platform`, `source`, `screen?`, `arrivalSlot?` (send with the token). `source` is `home_forecast` \| `arrival_time_changed` on Android and `home_open` \| `arrival_change` on iOS; both pairs mean the same and no business question reads it | BQ8, BQ10 |
 | `availability_viewed` | `platform`, `source`: `find_spot` \| `level_map`, `levelCode?` (send with the token, only when the spots come from the server) | BQ7, BQ8 |
 | `spot_selected` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
 | `reserve_confirm_tapped` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
@@ -502,6 +502,7 @@ Section notes:
 | `reservationPolicy` (BQ5) | Last 28 days, by level and creation slot. See below |
 | `leadTime` (BQ6) | The personal advice of `/recommendations/lead-time` for every user with at least 3 finished reservations, grouped in `buckets`. `medianP80TravelMinutes` is the median of the users' 80th percentiles and `expiredShare` the share of finished user reservations that expired |
 | `conversionFunnel` (BQ7) | Last 28 days. The unit is one user on one Bogotá day. A step counts only if the previous one happened that day: `availability_viewed` → `spot_selected` → `reserve_confirm_tapped` → a user reservation created. `fromPrevious` is the share kept from the previous step, `biggestDrop` is the step that loses the largest share, `failures` counts `reserve_failed` by `reason` and `daily` covers the last 14 days |
+| `predictionAccuracy` (BQ10) | Last 7 days. Each occupancy snapshot is compared with the prediction for its level, weekday and 15-minute slot, built like `/predictions`: the average occupancy of the same weekday and slot in the 28 days before the snapshot's Bogotá day. `byLevel` only counts snapshots that have that history; `meanAbsError` is the average of `|real − predicted|` and `overall.meanAbsError` is `null` without samples. `forecastViews` counts `forecast_viewed` events of the last 7 days by `platform` |
 
 `reservationPolicy` fields:
 
@@ -529,6 +530,15 @@ Section notes:
   "byPlatform": [ { "platform": "android", "viewed": 60, "selected": 47, "confirmed": 30, "reserved": 26, "conversionRate": 0.433 } ],
   "failures": [ { "reason": "spot_taken", "count": 4 }, { "reason": "offline", "count": 1 } ],
   "daily": [ { "day": "2026-10-25", "viewed": 5, "reserved": 0, "conversionRate": 0 } ]
+},
+"predictionAccuracy": {
+  "windowDays": 7,
+  "forecastViews": { "total": 42, "byPlatform": [ { "platform": "android", "views": 25 }, { "platform": "ios", "views": 17 } ] },
+  "byLevel": [
+    { "level": "P1", "samples": 672, "predictedAvg": 0.61, "realAvg": 0.645, "meanAbsError": 0.072 },
+    { "level": "P2", "samples": 672, "predictedAvg": 0.48, "realAvg": 0.462, "meanAbsError": 0.058 }
+  ],
+  "overall": { "samples": 1344, "meanAbsError": 0.065 }
 }
 ```
 
