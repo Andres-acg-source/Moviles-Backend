@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionUsage', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -198,6 +198,53 @@ test('unmet demand BQ4 counts once per user and slot when the campus is full', a
   assert.deepEqual(body, { total: 2, rows: [{ weekday: bogotaParts(now).weekday, slot: slotLabel(now), zone: '4.60,-74.07', count: 2 }] });
   const stored = await db().query('SELECT slot_start FROM unmet_demand LIMIT 1');
   assert.equal(stored.rows[0].slot_start.getTime(), slotStart(now).getTime());
+});
+
+test('prediction accuracy BQ10 compares each snapshot with the average of the same weekday and slot', async () => {
+  const recent = slotStart(new Date(Date.now() - 2 * 86_400_000));
+  const daysBefore = (days: number, minutes = 0) => new Date(recent.getTime() - days * 86_400_000 + minutes * 60_000);
+  const snapshots: [string, Date, number][] = [
+    ['P1', daysBefore(7), 50],
+    ['P1', daysBefore(14), 70],
+    ['P1', daysBefore(7, 15), 100],
+    ['P1', daysBefore(6), 100],
+    ['P1', recent, 90],
+    ['P2', daysBefore(21), 20],
+    ['P2', recent, 25],
+    ['P3', recent, 40]
+  ];
+  for (const [level, takenAt, busy] of snapshots) {
+    await db().query(
+      `INSERT INTO occupancy_snapshots (level_code, taken_at, total, free, reserved, occupied, source) VALUES ($1, $2, 100, $3, $4, $5, 'sim')`,
+      [level, takenAt, 100 - busy, Math.floor(busy / 5), busy - Math.floor(busy / 5)]
+    );
+  }
+  assert.equal((await track('forecast_viewed', { platform: 'ios', screen: 'home', arrivalSlot: '08:00', source: 'home_open' })).status, 202);
+  assert.equal((await track('forecast_viewed', { platform: 'ios', screen: 'home', arrivalSlot: '08:15', source: 'arrival_change' })).status, 202);
+  assert.equal((await track('forecast_viewed', { platform: 'android', screen: 'home', arrivalSlot: '09:00', source: 'home_open' })).status, 202);
+  await track('map_loaded', { platform: 'ios', levelCode: 'P1', durationMs: 120, success: true });
+  await db().query(
+    `INSERT INTO telemetry_events (name, properties, created_at) VALUES ('forecast_viewed', '{"platform": "ios"}', now() - interval '10 days')`
+  );
+
+  const body = (await summary()).predictionAccuracy;
+  assert.equal(body.windowDays, 7);
+  assert.deepEqual(body.forecastViews, { total: 3, byPlatform: [{ platform: 'ios', views: 2 }, { platform: 'android', views: 1 }] });
+  assert.deepEqual(body.byLevel, [
+    { level: 'P1', samples: 1, predictedAvg: 0.6, realAvg: 0.9, meanAbsError: 0.3 },
+    { level: 'P2', samples: 1, predictedAvg: 0.2, realAvg: 0.25, meanAbsError: 0.05 }
+  ]);
+  for (const row of body.byLevel) assert.ok(row.samples > 0 && row.meanAbsError >= 0 && row.meanAbsError <= 1);
+  assert.deepEqual(body.overall, { samples: 2, meanAbsError: 0.175 });
+});
+
+test('prediction accuracy BQ10 is empty without snapshots or forecast views', async () => {
+  assert.deepEqual((await summary()).predictionAccuracy, {
+    windowDays: 7,
+    forecastViews: { total: 0, byPlatform: [] },
+    byLevel: [],
+    overall: { samples: 0, meanAbsError: null }
+  });
 });
 
 test('reservation policy BQ5 by level, slot and source', async () => {

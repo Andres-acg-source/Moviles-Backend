@@ -448,6 +448,39 @@ function renderBq8(container, data) {
   ], [1, 2, 3]);
 }
 
+function renderBq10(container, data) {
+  if (!data.overall.samples && !data.forecastViews.total) {
+    empty(container, `No snapshots with a prediction or forecast_viewed events in the last ${data.windowDays} days yet.`);
+    return;
+  }
+  const worst = [...data.byLevel].sort((a, b) => b.meanAbsError - a.meanAbsError)[0];
+  stats(container, [
+    { label: 'Forecast views', value: fmtInt(data.forecastViews.total), note: `last ${data.windowDays} days` },
+    { label: 'Mean absolute error', value: fmtPct(data.overall.meanAbsError, 1), note: `${fmtInt(data.overall.samples)} snapshots compared` },
+    { label: 'Least accurate level', value: worst ? worst.level : '–', note: worst ? `${fmtPct(worst.meanAbsError, 1)} average error` : 'No predictions to compare' }
+  ]);
+  if (!data.byLevel.length) {
+    empty(container, 'No snapshot in this window has history from the previous 28 days to predict it.');
+  } else {
+    const split = h('div', { class: 'split' });
+    container.append(split);
+    const comparison = block(split, 'Predicted versus real occupancy');
+    legend(comparison, [{ label: 'Predicted', color: css('--series-1') }, { label: 'Real', color: css('--series-2') }]);
+    hbars(comparison, data.byLevel.flatMap(row => [
+      { label: `${row.level} predicted`, value: row.predictedAvg, color: css('--series-1'), note: `${fmtInt(row.samples)} snapshots` },
+      { label: `${row.level} real`, value: row.realAvg, color: css('--series-2'), note: `${fmtInt(row.samples)} snapshots` }
+    ]), { format: value => fmtPct(value), max: 1, valueLabel: 'average occupancy' });
+    const maxError = Math.max(...data.byLevel.map(row => row.meanAbsError));
+    hbars(block(split, 'Mean absolute error by level'), data.byLevel.map(row => ({ label: row.level, value: row.meanAbsError, color: levelColor(row.level), note: `${fmtInt(row.samples)} snapshots` })),
+      { format: value => fmtPct(value, 1), max: Math.min(1, niceMax(maxError || 0.1)), valueLabel: 'average error' });
+  }
+  tableView(container, ['Level', 'Snapshots', 'Predicted', 'Real', 'Mean abs. error'],
+    data.byLevel.map(row => [row.level, fmtInt(row.samples), fmtPct(row.predictedAvg, 1), fmtPct(row.realAvg, 1), fmtPct(row.meanAbsError, 1)]), [1, 2, 3, 4]);
+  if (data.forecastViews.byPlatform.length) {
+    tableView(container, ['Platform', 'Forecast views'], data.forecastViews.byPlatform.map(row => [row.platform, fmtInt(row.views)]), [1]);
+  }
+}
+
 function renderBq1(container, rows) {
   if (!rows.length) {
     empty(container, 'No map_loaded events yet.');
@@ -586,6 +619,7 @@ function renderBq5(container, data) {
 const SECTIONS = [
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
+  ['bq10', summary => summary.predictionAccuracy, renderBq10],
   ['bq1', summary => summary.mapLoad, renderBq1],
   ['bq2', summary => summary.walkingTime, renderBq2],
   ['bq3', summary => summary.filterUsage, renderBq3],
