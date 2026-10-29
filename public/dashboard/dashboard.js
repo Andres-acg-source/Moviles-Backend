@@ -448,6 +448,38 @@ function renderBq8(container, data) {
   ], [1, 2, 3]);
 }
 
+function renderBq9(container, data) {
+  if (!data.redirects) {
+    empty(container, `No redirects to nearby lots in the last ${data.windowDays} days. They appear when a driver taps Navigate in No campus spots.`);
+    return;
+  }
+  stats(container, [
+    { label: 'Drivers sent to nearby lots', value: fmtInt(data.redirects), note: `last ${data.windowDays} days, ${fmtInt(data.byLot.length)} lots` },
+    { label: 'Answered "Did you park here?"', value: fmtPct(data.answerRate), note: `${fmtInt(data.answers)} answers` },
+    { label: 'Parked among the answers', value: fmtPct(data.parkedShare), note: `${fmtInt(data.parked)} drivers confirmed it` }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  hbars(block(split, 'Drivers sent to each lot'), data.byLot.map(lot => ({
+    label: lot.name, value: lot.redirects, note: lot.estimatedDrivers === null ? 'no answers yet' : `about ${fmtInt(lot.estimatedDrivers)} parked there`
+  })), { valueLabel: 'redirects' });
+  hbars(block(split, 'Share that parked, among the answers'), data.byLot.map(lot => ({
+    label: lot.name, value: lot.parkedShare ?? 0, note: `${fmtInt(lot.answers)} answers`
+  })), { format: value => fmtPct(value), max: 1, valueLabel: 'parked' });
+  const hours = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`);
+  const series = data.byLot.map((lot, index) => ({
+    name: lot.name,
+    color: css(`--series-${(index % 3) + 1}`),
+    values: hours.map(hour => data.byLotHour.find(row => row.lotId === lot.lotId && row.hour === hour)?.redirects ?? 0)
+  }));
+  const trend = block(container, 'Redirects by hour of the redirect (Bogotá time)');
+  legend(trend, series.map(item => ({ label: item.name, color: item.color })), 'line');
+  lines(trend, hours, series, { integer: true });
+  const names = new Map(data.byLot.map(lot => [lot.lotId, lot.name]));
+  tableView(container, ['Lot', 'Hour', 'Redirects', 'Answers', 'Parked', 'Share parked'],
+    data.byLotHour.map(row => [names.get(row.lotId) ?? row.lotId, row.hour, fmtInt(row.redirects), fmtInt(row.answers), fmtInt(row.parked), fmtPct(row.parkedShare)]), [2, 3, 4, 5]);
+}
+
 function renderBq10(container, data) {
   if (!data.overall.samples && !data.forecastViews.total) {
     empty(container, `No snapshots with a prediction or forecast_viewed events in the last ${data.windowDays} days yet.`);
@@ -619,6 +651,7 @@ function renderBq5(container, data) {
 const SECTIONS = [
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
+  ['bq9', summary => summary.redirectValue, renderBq9],
   ['bq10', summary => summary.predictionAccuracy, renderBq10],
   ['bq1', summary => summary.mapLoad, renderBq1],
   ['bq2', summary => summary.walkingTime, renderBq2],
