@@ -103,15 +103,15 @@ JWT: No. Rate limited.
 
 | Field | Rules |
 |---|---|
-| `email` | Valid email. It is trimmed and lowercased |
-| `password` | 6 to 128 characters |
-| `name` | Optional, 1 to 80 characters |
+| `email` | Valid email of up to 100 characters from a real provider: `gmail.com`, `outlook.com`, `hotmail.com`, `live.com`, `yahoo.com`, `icloud.com`, `me.com`, `proton.me`, `protonmail.com` or `uniandes.edu.co`. It is trimmed and lowercased |
+| `password` | 8 to 64 characters with an uppercase letter, a lowercase letter, a number and a symbol, without spaces |
+| `name` | Optional, 2 to 30 characters. Letters, spaces, apostrophes, dots and hyphens, starting with a letter, without double spaces or the same letter three times in a row |
 
 ```http
 POST /api/v1/auth/register
 Content-Type: application/json
 
-{ "name": "Laura", "email": "laura@uniandes.edu.co", "password": "secret123" }
+{ "name": "Laura", "email": "laura@uniandes.edu.co", "password": "Secret12!" }
 ```
 
 ```json
@@ -312,13 +312,19 @@ JWT: Yes. Returns where the user's car is parked, based on the fulfilled reserva
 
 JWT: No. Returns off-campus alternatives. There is no live availability for them.
 
+`imageUrl` is the path of the lot's photo on this server, or `null` when there is no photo. The apps add it to the base URL of the API (without `/api/v1`).
+
 ```json
 200
 [
-  { "id": "nearby-1", "name": "Park Central", "address": "Calle  ejercito 18", "ratePerHour": 6000, "currency": "COP", "walkMinutes": 6 },
-  { "id": "nearby-2", "name": "City Parking", "address": "Carrera 1 19-20", "ratePerHour": 7500, "currency": "COP", "walkMinutes": 9 }
+  { "id": "nearby-1", "name": "Park Central", "address": "Calle  ejercito 18", "ratePerHour": 6000, "currency": "COP", "walkMinutes": 6, "imageUrl": "/images/nearby-1.jpg" },
+  { "id": "nearby-2", "name": "City Parking", "address": "Carrera 1 19-20", "ratePerHour": 7500, "currency": "COP", "walkMinutes": 9, "imageUrl": "/images/nearby-2.jpg" }
 ]
 ```
+
+### GET /images/{file}
+
+JWT: No. Serves the photos of the nearby lots from `public/images/`. A lot gets a photo when a file named with its id is there, for example `nearby-1.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
 
 ## Prediction and recommendations
 
@@ -402,7 +408,7 @@ With fewer than 3 reservations, `p80TravelMinutes`, `expiredCount` and `suggeste
 ### POST /api/v1/telemetry
 
 JWT: Optional. When the token is valid, the event is stored with the user id. This is required for `app_opened` to count toward BQ3. Rate limited.
-Any event can include `occurredAt`, an ISO timestamp with a timezone. The Android client adds it to every event, so an event that waited in the offline queue keeps its real time and day. BQ8 uses it, never later than the time the server received the event, and falls back to the receipt time when it is missing.
+Any event can include `occurredAt`, an ISO timestamp with a timezone. The Android client adds it to every event, so an event that waited in the offline queue keeps its real time and day. BQ8 and BQ9 use it, never later than the time the server received the event, and fall back to the receipt time when it is missing.
 
 | Field | Rules |
 |---|---|
@@ -434,6 +440,8 @@ Events used by the analytics:
 | `spot_selected` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
 | `reserve_confirm_tapped` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
 | `reserve_failed` | `platform`, `reason`: `spot_taken` \| `already_active` \| `expired` \| `offline` \| `server_error` \| `other` | BQ7 |
+| `lot_redirected` | `platform`, `lotId` (when the driver taps Navigate on a nearby lot) | BQ9 |
+| `lot_arrival_confirmed` | `platform`, `lotId`, `parked` (boolean), `minutesAfter` (minutes since the redirect) | BQ9 |
 
 ### GET /api/v1/analytics/summary
 
@@ -462,6 +470,14 @@ JWT: Yes.
     "forecastParkingRate": 0.422,
     "liveOnlyParkingRate": 0.28,
     "parkingRateDifference": 0.142
+  },
+  "redirectValue": {
+    "windowDays": 28, "redirects": 12, "answers": 8, "parked": 6, "answerRate": 0.667, "parkedShare": 0.75,
+    "byLot": [
+      { "lotId": "nearby-1", "name": "Park Central", "redirects": 9, "answers": 6, "parked": 5, "parkedShare": 0.833, "estimatedDrivers": 7 },
+      { "lotId": "nearby-2", "name": "City Parking", "redirects": 3, "answers": 2, "parked": 1, "parkedShare": 0.5, "estimatedDrivers": 2 }
+    ],
+    "byLotHour": [ { "lotId": "nearby-1", "hour": "13:00", "redirects": 4, "answers": 3, "parked": 3, "parkedShare": 1 } ]
   },
   "filterUsage": {
     "month": "2026-10",
@@ -497,6 +513,7 @@ Section notes:
 | `reservations` | All-time reservation counts by status, split by source (`user` and `sim`) |
 | `mapLoad` (BQ1) | Grouped by `deviceModel` + `osVersion` + `levelCode`. `p90Ms` uses `percentile_cont(0.9)`. `failureRate` is the share of loads with `success: false` |
 | `predictionUsage` (BQ8) | Groups authenticated telemetry by event occurrence time and Bogotá calendar day (falling back to server receipt time for older events). A day is forecast-led only when the first forecast event precedes the first successful live-availability event; days with live availability and no earlier forecast are live-only. Parking requires a user reservation check-in that day; simulated reservations are excluded. Rates are `null` when the group has no days |
+| `redirectValue` (BQ9) | Last 28 days, by lot and Bogotá hour of the redirect. Each `lot_redirected` is one redirect. Each `lot_arrival_confirmed` is placed at the time of its redirect (`occurredAt − minutesAfter`), so an answer given an hour later still counts in the hour the driver was sent. `parkedShare = parked ÷ answers`, `answerRate = answers ÷ redirects` and `estimatedDrivers = round(redirects × parkedShare)`. Shares are `null` without answers. No user id is exposed |
 | `filterUsage` (BQ3) | Current Bogotá month. `activeUsers` counts distinct users who sent `app_opened` with a token. `percentNeverUsed` is the percentage of active users who never applied that filter this month |
 | `unmetDemand` (BQ4) | Times a logged-in user saw a full campus, counted once per user and 15-minute slot. User ids are not exposed |
 | `reservationPolicy` (BQ5) | Last 28 days, by level and creation slot. See below |

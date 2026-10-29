@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { lotImagePaths } from './lot-images.js';
 
 export const DEFAULT_DESTINATION = 'ml';
 const WALK_SPEED_M_PER_S = 1.3;
@@ -62,9 +63,12 @@ export async function levelSpots(levelCode: string, destination: string, filters
   }));
 }
 
-export async function nearbyLots() {
-  const { rows } = await db().query(
-    'SELECT id, name, address, rate_per_hour AS "ratePerHour", currency, walk_minutes AS "walkMinutes" FROM nearby_lots ORDER BY walk_minutes, id'
-  );
-  return rows;
+export async function nearbyLots(imagesDir?: string) {
+  const [{ rows }, images] = await Promise.all([
+    db().query(
+      'SELECT id, name, address, rate_per_hour AS "ratePerHour", currency, walk_minutes AS "walkMinutes" FROM nearby_lots ORDER BY walk_minutes, id'
+    ),
+    lotImagePaths(imagesDir)
+  ]);
+  return rows.map(row => ({ ...row, imageUrl: images.get(row.id) ?? null }));
 }

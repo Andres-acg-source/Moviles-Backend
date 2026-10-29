@@ -6,7 +6,7 @@ import { recordAvailabilityQuery } from '../services/unmet-demand.js';
 
 const flag = (value: unknown) => value === 'true';
 
-export function catalogRoutes() {
+export function catalogRoutes(imagesDir?: string) {
   const router = Router();
   router.get('/buildings', asyncRoute(async (_req, res) => res.json(await buildings())));
   router.get('/levels', optionalAuth, asyncRoute(async (req, res) => {
@@ -19,6 +19,6 @@ export function catalogRoutes() {
     const filters = { available: flag(req.query.available), accessible: flag(req.query.accessible), ev: flag(req.query.ev), vip: flag(req.query.vip) };
     res.json(await levelSpots(String(req.params.code), destination, filters, req.userId));
   }));
-  router.get('/nearby-lots', asyncRoute(async (_req, res) => res.json(await nearbyLots())));
+  router.get('/nearby-lots', asyncRoute(async (_req, res) => res.json(await nearbyLots(imagesDir))));
   return router;
 }

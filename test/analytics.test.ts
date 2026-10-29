@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
 import { db } from '../src/db.js';
-import { bogotaParts, slotLabel, slotStart } from '../src/time.js';
+import { bogotaDate, bogotaMidnight, bogotaParts, DAY_MS, slotLabel, slotStart } from '../src/time.js';
 import { client, createUser, setAllSpots, setSpots, setupTestDb, startServer } from './helpers.js';
 
 let cleanup: () => Promise<void>;
@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -156,6 +156,67 @@ test('prediction usage BQ8 returns null rates when there is no real telemetry', 
     forecastParkingRate: null,
     liveOnlyParkingRate: null,
     parkingRateDifference: null
+  });
+});
+
+test('redirect value BQ9 counts redirects, answers and parked drivers per lot and hour of the redirect', async () => {
+  const driver = await createUser();
+  const day = bogotaMidnight(bogotaDate(new Date(Date.now() - 2 * DAY_MS)));
+  const at = (hour: number, minute: number) => new Date(day.getTime() + (hour * 60 + minute) * 60_000).toISOString();
+  const addEvent = (name: string, occurredAt: string, properties: Record<string, unknown>) => db().query(
+    'INSERT INTO telemetry_events (user_id, name, properties, created_at) VALUES ($1, $2, $3, $4)',
+    [driver.id, name, { ...properties, occurredAt }, occurredAt]
+  );
+
+  await addEvent('lot_redirected', at(13, 50), { lotId: 'nearby-1', platform: 'android' });
+  await addEvent('lot_arrival_confirmed', at(14, 10), { lotId: 'nearby-1', parked: true, minutesAfter: 20, platform: 'android' });
+  await addEvent('lot_redirected', at(13, 55), { lotId: 'nearby-1', platform: 'ios' });
+  await addEvent('lot_arrival_confirmed', at(14, 0), { lotId: 'nearby-1', parked: false, minutesAfter: 5, platform: 'ios' });
+  await addEvent('lot_redirected', at(8, 10), { lotId: 'nearby-2', platform: 'android' });
+  await db().query(
+    `INSERT INTO telemetry_events (name, properties, created_at) VALUES ('lot_redirected', '{"lotId": "nearby-2"}', now() - interval '40 days')`
+  );
+
+  const body = (await summary()).redirectValue;
+  assert.deepEqual(body, {
+    windowDays: 28,
+    redirects: 3,
+    answers: 2,
+    parked: 1,
+    answerRate: 0.667,
+    parkedShare: 0.5,
+    byLot: [
+      { lotId: 'nearby-1', name: 'Park Central', redirects: 2, answers: 2, parked: 1, parkedShare: 0.5, estimatedDrivers: 1 },
+      { lotId: 'nearby-2', name: 'City Parking', redirects: 1, answers: 0, parked: 0, parkedShare: null, estimatedDrivers: null }
+    ],
+    byLotHour: [
+      { lotId: 'nearby-1', hour: '13:00', redirects: 2, answers: 2, parked: 1, parkedShare: 0.5 },
+      { lotId: 'nearby-2', hour: '08:00', redirects: 1, answers: 0, parked: 0, parkedShare: null }
+    ]
+  });
+});
+
+test('redirect value BQ9 accepts the events from the apps and ignores a broken minutesAfter', async () => {
+  const driver = await createUser();
+  assert.equal((await track('lot_redirected', { lotId: 'nearby-2', platform: 'android' }, driver.token)).status, 202);
+  assert.equal((await track('lot_arrival_confirmed', { lotId: 'nearby-2', parked: true, minutesAfter: 'soon', platform: 'android' }, driver.token)).status, 202);
+
+  const body = (await summary()).redirectValue;
+  assert.equal(body.redirects, 1);
+  assert.equal(body.parked, 1);
+  assert.deepEqual(body.byLot.map((lot: { lotId: string }) => lot.lotId), ['nearby-2']);
+});
+
+test('redirect value BQ9 is empty without redirects', async () => {
+  assert.deepEqual((await summary()).redirectValue, {
+    windowDays: 28,
+    redirects: 0,
+    answers: 0,
+    parked: 0,
+    answerRate: null,
+    parkedShare: null,
+    byLot: [],
+    byLotHour: []
   });
 });
 

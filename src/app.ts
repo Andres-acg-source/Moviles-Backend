@@ -8,6 +8,7 @@ import { authRoutes } from './routes/auth.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { healthRoutes } from './routes/health.js';
+import { imageRoutes } from './routes/images.js';
 import { predictionRoutes } from './routes/predictions.js';
 import { reservationRoutes } from './routes/reservations.js';
 import { simRoutes } from './routes/sim.js';
@@ -18,6 +19,7 @@ export interface AppOptions {
   occupancy?: OccupancySource;
   authLimitPerMinute?: number;
   telemetryLimitPerMinute?: number;
+  imagesDir?: string;
 }
 
 const limiter = (limit: number) => rateLimit({
@@ -40,9 +42,10 @@ export function createApp(options: AppOptions = {}) {
   app.use(express.json({ limit: '100kb' }));
   app.use(healthRoutes());
   app.use(dashboardRoutes());
+  app.use(imageRoutes(options.imagesDir));
   const api = express.Router();
   api.use(authRoutes(limiter(options.authLimitPerMinute ?? 10)));
-  api.use(catalogRoutes());
+  api.use(catalogRoutes(options.imagesDir));
   api.use(reservationRoutes());
   api.use(predictionRoutes());
   api.use(telemetryRoutes(limiter(options.telemetryLimitPerMinute ?? 120)));
