@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { client, createUser, setAllSpots, setSpots, setupTestDb, startServer } from './helpers.js';
 
@@ -20,7 +23,31 @@ test('buildings and nearby lots', async () => {
   assert.deepEqual(Object.keys(buildings.body[0]).sort(), ['id', 'name']);
   const nearby = await api('GET', '/api/v1/nearby-lots');
   assert.deepEqual(nearby.body.map((lot: { id: string }) => lot.id), ['nearby-1', 'nearby-2']);
-  assert.deepEqual(Object.keys(nearby.body[0]).sort(), ['address', 'currency', 'id', 'name', 'ratePerHour', 'walkMinutes']);
+  assert.deepEqual(Object.keys(nearby.body[0]).sort(), ['address', 'currency', 'id', 'imageUrl', 'name', 'ratePerHour', 'walkMinutes']);
+});
+
+test('nearby lots link the photo saved for each lot', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'parkwise-images-'));
+  await writeFile(join(dir, 'nearby-1.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  await writeFile(join(dir, 'notes.txt'), 'not a photo');
+  const photos = await startServer({ imagesDir: dir });
+  try {
+    const call = client(photos.base);
+    const nearby = await call('GET', '/api/v1/nearby-lots');
+    assert.deepEqual(nearby.body.map((lot: { id: string; imageUrl: string | null }) => [lot.id, lot.imageUrl]), [
+      ['nearby-1', '/images/nearby-1.jpg'],
+      ['nearby-2', null]
+    ]);
+    const photo = await fetch(`${photos.base}/images/nearby-1.jpg`);
+    assert.equal(photo.status, 200);
+    assert.equal(photo.headers.get('content-type'), 'image/jpeg');
+    assert.match(photo.headers.get('cache-control') ?? '', /max-age=2592000/);
+    assert.equal((await fetch(`${photos.base}/images/nearby-2.jpg`)).status, 404);
+    assert.equal((await fetch(`${photos.base}/images/notes.txt`)).status, 404);
+  } finally {
+    await photos.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('level counts report unavailable spots separately from usable capacity', async () => {
