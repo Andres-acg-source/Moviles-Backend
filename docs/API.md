@@ -312,13 +312,19 @@ JWT: Yes. Returns where the user's car is parked, based on the fulfilled reserva
 
 JWT: No. Returns off-campus alternatives. There is no live availability for them.
 
+`imageUrl` is the path of the lot's photo on this server, or `null` when there is no photo. The apps add it to the base URL of the API (without `/api/v1`).
+
 ```json
 200
 [
-  { "id": "nearby-1", "name": "Park Central", "address": "Calle  ejercito 18", "ratePerHour": 6000, "currency": "COP", "walkMinutes": 6 },
-  { "id": "nearby-2", "name": "City Parking", "address": "Carrera 1 19-20", "ratePerHour": 7500, "currency": "COP", "walkMinutes": 9 }
+  { "id": "nearby-1", "name": "Park Central", "address": "Calle  ejercito 18", "ratePerHour": 6000, "currency": "COP", "walkMinutes": 6, "imageUrl": "/images/nearby-1.jpg" },
+  { "id": "nearby-2", "name": "City Parking", "address": "Carrera 1 19-20", "ratePerHour": 7500, "currency": "COP", "walkMinutes": 9, "imageUrl": "/images/nearby-2.jpg" }
 ]
 ```
+
+### GET /images/{file}
+
+JWT: No. Serves the photos of the nearby lots from `public/images/`. A lot gets a photo when a file named with its id is there, for example `nearby-1.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
 
 ## Prediction and recommendations
 
