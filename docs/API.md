@@ -155,14 +155,11 @@ JWT: Yes.
 
 ### GET /api/v1/buildings
 
-JWT: No. These are the destinations used for walking times.
+JWT: No. These are the destinations offered for walking times. Only Edificio Santo Domingo is offered. The ids `ml`, `biblioteca` and `deportivo` are no longer listed, but `/levels/{code}/spots` still accepts them so older app versions keep working.
 
 ```json
 200
 [
-  { "id": "biblioteca", "name": "Biblioteca General" },
-  { "id": "deportivo", "name": "Centro Deportivo" },
-  { "id": "ml", "name": "Edificio Mario Laserna" },
   { "id": "sd", "name": "Edificio Santo Domingo" }
 ]
 ```
@@ -201,7 +198,7 @@ JWT: Optional (needed for `mine`).
 
 | Query | Description |
 |---|---|
-| `destination` | Building id used for `walkMinutes`. Default `ml` |
+| `destination` | Building id used for `walkMinutes`. Default `sd` |
 | `available=true` | Only `free` spots |
 | `accessible=true` | Only accessible spots |
 | `ev=true` | Only electric-vehicle spots |
@@ -566,6 +563,8 @@ Section notes:
 ## Simulator (demo only)
 
 Both routes require the header `X-Sim-Key: <SIM_KEY>`. A wrong key returns 403. When `SIM_KEY` is not configured, both routes return 404.
+
+With `OCCUPANCY_SOURCE=fixed` the same spots of each level stay occupied and only ParkWise users change the counts. A scenario still applies while it lasts, and when it ends or is reset the same spots as before are occupied again.
 
 ### POST /api/v1/sim/scenario
 

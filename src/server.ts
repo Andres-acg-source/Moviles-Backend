@@ -15,7 +15,7 @@ if (applied.length) console.log(`Applied migrations: ${applied.join(', ')}`);
 await seedDatabase();
 
 const occupancy = createOccupancySource(occupancySource());
-if (occupancySource() === 'simulator' && (await ensureHistory())) console.log('Generated 4 weeks of simulated occupancy history');
+if (occupancySource() !== 'none' && (await ensureHistory())) console.log('Generated 4 weeks of simulated occupancy history');
 if (occupancySource() === 'none') console.log(`Freed ${await clearSimulatedOccupancy()} spots held by the simulator`);
 occupancy.start();
 

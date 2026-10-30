@@ -4,7 +4,8 @@ import { db } from '../src/db.js';
 import { ensureHistory } from '../src/simulation/history.js';
 import { baseOccupancy } from '../src/simulation/profile.js';
 import { clearSimulatedOccupancy } from '../src/simulation/clear.js';
-import { clearScenarios } from '../src/simulation/scenarios.js';
+import { FIXED_OCCUPANCY, FixedOccupancySource } from '../src/simulation/fixed.js';
+import { clearScenarios, setScenario } from '../src/simulation/scenarios.js';
 import { SimulatedOccupancySource } from '../src/simulation/simulator.js';
 import { client, createUser, setAllSpots, setupTestDb, startServer } from './helpers.js';
 
@@ -148,3 +149,62 @@ test('initial history is generated only once', async () => {
   assert.equal(await ensureHistory({ now: WEDNESDAY_10AM }), false);
   assert.equal((await db().query('SELECT count(*)::int AS count FROM occupancy_snapshots')).rows[0].count, snapshots);
 });
+
+const busySpots = async () => (await db().query<{ id: string }>(
+  `SELECT id FROM spots WHERE status IN ('occupied', 'reserved') AND source = 'sim' ORDER BY id`
+)).rows.map(row => row.id);
+
+test('fixed occupancy keeps the same spots of each level occupied', async () => {
+  const fixed = new FixedOccupancySource({ now: () => WEDNESDAY_10AM });
+  await fixed.tick();
+  const first = await busySpots();
+  const { rows } = await db().query<{ level_code: string; busy: number; total: number }>(
+    `SELECT level_code, count(*) FILTER (WHERE status = 'occupied')::int AS busy, count(*) FILTER (WHERE status <> 'disabled')::int AS total
+       FROM spots GROUP BY 1 ORDER BY 1`
+  );
+  for (const level of rows) assert.equal(level.busy, Math.round(FIXED_OCCUPANCY[level.level_code] * level.total), level.level_code);
+
+  await setAllSpots('free');
+  await new FixedOccupancySource({ now: () => WEDNESDAY_10AM }).tick();
+  assert.deepEqual(await busySpots(), first);
+  for (let tick = 0; tick < 3; tick++) await fixed.tick();
+  assert.deepEqual(await busySpots(), first);
+});
+
+test('with fixed occupancy only ParkWise users change the free spots', async () => {
+  const fixed = new FixedOccupancySource({ now: () => WEDNESDAY_10AM });
+  await fixed.tick();
+  const user = await createUser();
+  const freeInP1 = async () => ((await api('GET', '/api/v1/levels')).body.levels as Array<{ code: string; free: number }>)
+    .find(level => level.code === 'P1')!.free;
+  const before = await freeInP1();
+  const spot = (await db().query(`SELECT id FROM spots WHERE level_code = 'P1' AND status = 'free' ORDER BY id LIMIT 1`)).rows[0].id;
+  const reservation = (await api('POST', '/api/v1/reservations', { token: user.token, body: { spotId: spot } })).body;
+  await fixed.tick();
+  assert.equal(await freeInP1(), before - 1);
+  await api('POST', `/api/v1/reservations/${reservation.id}/release`, { token: user.token });
+  await fixed.tick();
+  assert.equal(await freeInP1(), before);
+});
+
+test('with fixed occupancy a scenario fills the campus and the same spots come back after it', async () => {
+  const fixed = new FixedOccupancySource({ now: () => WEDNESDAY_10AM });
+  await fixed.tick();
+  const layout = await busySpots();
+  setScenario(100, 15, undefined, WEDNESDAY_10AM);
+  await fixed.tick();
+  assert.equal((await api('GET', '/api/v1/levels')).body.campusFull, true);
+  clearScenarios();
+  await fixed.tick();
+  assert.deepEqual(await busySpots(), layout);
+});
+
+test('fixed occupancy records one snapshot per slot', async () => {
+  const at = new Date('2026-08-05T15:00:00Z');
+  const fixed = new FixedOccupancySource({ now: () => at });
+  await fixed.tick();
+  await fixed.tick();
+  const { rows } = await db().query(`SELECT level_code, free FROM occupancy_snapshots WHERE taken_at = $1 ORDER BY level_code`, [at]);
+  assert.deepEqual(rows.map(row => row.level_code), ['P1', 'P2', 'P3']);
+});
+

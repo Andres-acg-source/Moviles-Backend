@@ -69,7 +69,7 @@ For an Android emulator, use `http://10.0.2.2:3000`. For a physical device, use 
 | `TEST_DATABASE_URL` | For tests | — | Separate database or Neon branch used only by `npm test` |
 | `JWT_SECRET` | In production | Random value per run in development | Secret used to sign tokens. The process refuses to start without it when `NODE_ENV=production` |
 | `SIM_KEY` | No | — | Enables `/api/v1/sim/*`. The client sends it in the `X-Sim-Key` header. Without it, those routes return 404 |
-| `OCCUPANCY_SOURCE` | No | `simulator` | `simulator`, or `none` to disable the simulator and free every spot it holds on startup |
+| `OCCUPANCY_SOURCE` | No | `simulator` | `simulator`; `fixed` to keep the same spots of each level occupied (75 % of P1, 80 % of P2 and 70 % of P3) so only ParkWise users change the counts, while snapshots and scenarios keep working; or `none` to disable the simulator and free every spot it holds on startup |
 | `HOLD_MINUTES` | No | `15` | How long a reservation holds a spot before it expires |
 | `PORT` | No | `3000` | HTTP port. Render sets it automatically |
 | `NODE_ENV` | No | — | `production` on Render. Tests set `test`, which disables the simulator interval and request logs |

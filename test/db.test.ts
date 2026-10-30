@@ -11,7 +11,7 @@ after(async () => { await cleanup(); });
 test('migrations are idempotent', async () => {
   assert.deepEqual(await migrate(), []);
   const { rows } = await db().query('SELECT name FROM schema_migrations ORDER BY name');
-  assert.deepEqual(rows.map(row => row.name), ['001_init.sql', '002_reservation_locks.sql']);
+  assert.deepEqual(rows.map(row => row.name), ['001_init.sql', '002_reservation_locks.sql', '003_listed_buildings.sql']);
 });
 
 test('seed creates 156 unique free spots and is idempotent', async () => {
@@ -26,7 +26,12 @@ test('seed creates 156 unique free spots and is idempotent', async () => {
 });
 
 test('seed creates buildings, levels and nearby lots', async () => {
-  assert.deepEqual((await db().query('SELECT id FROM buildings ORDER BY id')).rows.map(row => row.id), ['biblioteca', 'deportivo', 'ml', 'sd']);
+  assert.deepEqual((await db().query('SELECT id, listed FROM buildings ORDER BY id')).rows, [
+    { id: 'biblioteca', listed: false },
+    { id: 'deportivo', listed: false },
+    { id: 'ml', listed: false },
+    { id: 'sd', listed: true }
+  ]);
   assert.deepEqual((await db().query('SELECT code, underground FROM levels ORDER BY sort')).rows, [
     { code: 'P1', underground: false }, { code: 'P2', underground: true }, { code: 'P3', underground: true }
   ]);

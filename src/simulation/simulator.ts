@@ -6,6 +6,7 @@ import { driverPlan } from './driver-plan.js';
 import type { OccupancySource, TickOptions } from './occupancy-source.js';
 import { baseOccupancy, targetOccupancy } from './profile.js';
 import { scenarioFor } from './scenarios.js';
+import { recordSnapshot } from './snapshot.js';
 
 const TICK_MS = 60_000;
 const PROFILE_STEP = 0.5;
@@ -183,19 +184,7 @@ export class SimulatedOccupancySource implements OccupancySource {
   private async snapshot(now: Date) {
     const slot = slotStart(now);
     if (this.lastSnapshotSlot === slot.getTime()) return;
-    await db().query(
-      `INSERT INTO occupancy_snapshots (level_code, taken_at, total, free, reserved, occupied, source)
-       SELECT l.code, $1,
-              count(s.id) FILTER (WHERE s.status <> 'disabled'),
-              count(s.id) FILTER (WHERE s.status = 'free'),
-              count(s.id) FILTER (WHERE s.status = 'reserved'),
-              count(s.id) FILTER (WHERE s.status = 'occupied'),
-              'sim'
-         FROM levels l LEFT JOIN spots s ON s.level_code = l.code
-        GROUP BY l.code
-       ON CONFLICT (level_code, taken_at) DO NOTHING`,
-      [slot]
-    );
+    await recordSnapshot(slot);
     this.lastSnapshotSlot = slot.getTime();
   }
 }

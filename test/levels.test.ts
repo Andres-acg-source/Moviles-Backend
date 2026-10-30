@@ -19,8 +19,7 @@ beforeEach(async () => { await setAllSpots('free'); });
 
 test('buildings and nearby lots', async () => {
   const buildings = await api('GET', '/api/v1/buildings');
-  assert.equal(buildings.body.length, 4);
-  assert.deepEqual(Object.keys(buildings.body[0]).sort(), ['id', 'name']);
+  assert.deepEqual(buildings.body, [{ id: 'sd', name: 'Edificio Santo Domingo' }]);
   const nearby = await api('GET', '/api/v1/nearby-lots');
   assert.deepEqual(nearby.body.map((lot: { id: string }) => lot.id), ['nearby-1', 'nearby-2']);
   assert.deepEqual(Object.keys(nearby.body[0]).sort(), ['address', 'currency', 'id', 'imageUrl', 'name', 'ratePerHour', 'walkMinutes']);
@@ -104,10 +103,11 @@ test('walk minutes grow with underground levels and depend on destination', asyn
   };
   const p1 = await minutes('P1');
   const p3 = await minutes('P3');
-  assert.equal(p1, 2);
+  assert.equal(p1, 3);
   assert.ok(p3 > p1);
-  assert.equal(p3, 4);
-  assert.equal(await minutes('P1', 'ml'), p1);
+  assert.equal(p3, 5);
+  assert.equal(await minutes('P1', 'sd'), p1);
+  assert.equal(await minutes('P1', 'ml'), 2, 'a destination that is no longer listed still works');
   assert.ok((await minutes('P1', 'deportivo')) > p1);
   for (const level of ['P1', 'P2', 'P3']) {
     for (const destination of ['ml', 'sd', 'biblioteca', 'deportivo']) {

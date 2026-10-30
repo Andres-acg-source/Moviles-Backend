@@ -10,11 +10,12 @@ const levels = [
   { code: 'P3', name: 'Level P3', sort: 3, underground: true, zones: ['A', 'B'], perZone: 24 }
 ];
 
+// Only Santo Domingo is offered as destination. The others stay so older app versions keep working.
 const buildings = [
-  { id: 'ml', name: 'Edificio Mario Laserna', x: 120, y: 40 },
-  { id: 'sd', name: 'Edificio Santo Domingo', x: 200, y: -60 },
-  { id: 'biblioteca', name: 'Biblioteca General', x: 300, y: 100 },
-  { id: 'deportivo', name: 'Centro Deportivo', x: -350, y: 150 }
+  { id: 'ml', name: 'Edificio Mario Laserna', x: 120, y: 40, listed: false },
+  { id: 'sd', name: 'Edificio Santo Domingo', x: 200, y: -60, listed: true },
+  { id: 'biblioteca', name: 'Biblioteca General', x: 300, y: 100, listed: false },
+  { id: 'deportivo', name: 'Centro Deportivo', x: -350, y: 150, listed: false }
 ];
 
 const nearbyLots = [
@@ -58,8 +59,8 @@ export async function seedDatabase() {
     }
     if (await empty('buildings')) {
       await client.query(
-        'INSERT INTO buildings (id, name, x_m, y_m) SELECT * FROM unnest($1::text[], $2::text[], $3::real[], $4::real[])',
-        [buildings.map(b => b.id), buildings.map(b => b.name), buildings.map(b => b.x), buildings.map(b => b.y)]
+        'INSERT INTO buildings (id, name, x_m, y_m, listed) SELECT * FROM unnest($1::text[], $2::text[], $3::real[], $4::real[], $5::boolean[])',
+        [buildings.map(b => b.id), buildings.map(b => b.name), buildings.map(b => b.x), buildings.map(b => b.y), buildings.map(b => b.listed)]
       );
     }
     if (await empty('nearby_lots')) {
