@@ -20,8 +20,8 @@ export function assertConfig() {
     process.exit(1);
   }
   const source = occupancySource();
-  if (source !== 'simulator' && source !== 'none') {
-    console.error(`OCCUPANCY_SOURCE must be "simulator" or "none", received "${source}".`);
+  if (source !== 'simulator' && source !== 'fixed' && source !== 'none') {
+    console.error(`OCCUPANCY_SOURCE must be "simulator", "fixed" or "none", received "${source}".`);
     process.exit(1);
   }
   jwtSecret();
