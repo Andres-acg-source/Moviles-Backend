@@ -72,3 +72,79 @@ export async function nearbyLots(imagesDir?: string) {
   ]);
   return rows.map(row => ({ ...row, imageUrl: images.get(row.id) ?? null }));
 }
+
+type SpecialSpotCategory = 'accessible' | 'ev';
+
+interface SpecialSpotCounts {
+  total: number;
+  free: number;
+  reserved: number;
+  occupied: number;
+  disabled: number;
+}
+
+export async function specialSpotsAvailability() {
+  const { rows } = await db().query<{
+    levelCode: string;
+    levelName: string;
+    category: SpecialSpotCategory;
+    total: number;
+    free: number;
+    reserved: number;
+    occupied: number;
+    disabled: number;
+  }>(
+    `SELECT
+       l.code AS "levelCode",
+       l.name AS "levelName",
+       category.category,
+       count(s.id) FILTER (WHERE s.status <> 'disabled')::int AS total,
+       count(s.id) FILTER (WHERE s.status = 'free')::int AS free,
+       count(s.id) FILTER (WHERE s.status = 'reserved')::int AS reserved,
+       count(s.id) FILTER (WHERE s.status = 'occupied')::int AS occupied,
+       count(s.id) FILTER (WHERE s.status = 'disabled')::int AS disabled
+     FROM levels l
+     CROSS JOIN (VALUES ('accessible'), ('ev')) AS category(category)
+     LEFT JOIN spots s
+       ON s.level_code = l.code
+      AND (
+        (category.category = 'accessible' AND s.is_accessible = true)
+        OR
+        (category.category = 'ev' AND s.is_ev = true)
+      )
+     GROUP BY l.code, l.name, l.sort, category.category
+     ORDER BY l.sort, category.category`
+  );
+
+  const levels = new Map<string, {
+    levelCode: string;
+    levelName: string;
+    accessible: SpecialSpotCounts;
+    ev: SpecialSpotCounts;
+  }>();
+
+  for (const row of rows) {
+    if (!levels.has(row.levelCode)) {
+      levels.set(row.levelCode, {
+        levelCode: row.levelCode,
+        levelName: row.levelName,
+        accessible: { total: 0, free: 0, reserved: 0, occupied: 0, disabled: 0 },
+        ev: { total: 0, free: 0, reserved: 0, occupied: 0, disabled: 0 }
+      });
+    }
+
+    const level = levels.get(row.levelCode)!;
+    level[row.category] = {
+      total: row.total,
+      free: row.free,
+      reserved: row.reserved,
+      occupied: row.occupied,
+      disabled: row.disabled
+    };
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    levels: Array.from(levels.values())
+  };
+}
