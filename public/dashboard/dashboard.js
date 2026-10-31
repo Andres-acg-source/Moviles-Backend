@@ -1,3 +1,4 @@
+
 // ParkWise analytics dashboard. No dependencies: charts are plain SVG so the page works under the backend's
 // Content-Security-Policy (scripts only from this origin). All data comes from GET /api/v1/analytics/summary.
 
@@ -49,6 +50,7 @@ const sum = values => values.reduce((total, value) => total + (value ?? 0), 0);
 
 const fmtInt = value => (value === null || value === undefined ? '–' : new Intl.NumberFormat('en-US').format(value));
 const fmtPct = (ratio, digits = 0) => (ratio === null || ratio === undefined ? '–' : `${(ratio * 100).toFixed(digits)}%`);
+const fmtAvailability = value => (value === null || value === undefined ? '–' : `${value.toFixed(1)}%`);
 const fmtMin = value => (value === null || value === undefined ? '–' : `${value} min`);
 const fmtMs = value => (value === null || value === undefined ? '–' : `${Math.round(value)} ms`);
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -513,6 +515,83 @@ function renderBq10(container, data) {
   }
 }
 
+// ---------------------------------------------------------------- BQ12: special spot availability
+
+function renderBq12(container, data) {
+  if (!data.levels?.length) {
+    empty(container, 'No parking levels or special-spot snapshots available yet.');
+    return;
+  }
+
+  stats(container, [
+    {
+      label: 'Analysis period',
+      value: `${data.period.days} days`,
+      note: `${data.intervalMinutes}-minute intervals`
+    },
+    {
+      label: 'Parking levels',
+      value: fmtInt(data.levels.length)
+    }
+  ]);
+
+  for (const level of data.levels) {
+    const slots = level.slots ?? [];
+    const area = block(container, `Level ${level.code}`);
+
+    const series = [
+      {
+        name: 'Accessible availability',
+        color: css('--series-1'),
+        values: slots.map(slot => slot.accessibleAvailability)
+      },
+      {
+        name: 'EV availability',
+        color: css('--series-2'),
+        values: slots.map(slot => slot.evAvailability)
+      }
+    ];
+
+    legend(
+      area,
+      series.map(item => ({
+        label: item.name,
+        color: item.color
+      })),
+      'line'
+    );
+
+    lines(
+      area,
+      slots.map(slot => slot.slot),
+      series,
+      {
+        format: fmtAvailability,
+        yMax: 100
+      }
+    );
+
+    tableView(
+      area,
+      [
+        'Time slot',
+        'Accessible availability',
+        'Accessible snapshots',
+        'EV availability',
+        'EV snapshots'
+      ],
+      slots.map(slot => [
+        slot.slot,
+        fmtAvailability(slot.accessibleAvailability),
+        fmtInt(slot.accessibleSamples),
+        fmtAvailability(slot.evAvailability),
+        fmtInt(slot.evSamples)
+      ]),
+      [1, 2, 3, 4]
+    );
+  }
+}
+
 function renderBq1(container, rows) {
   if (!rows.length) {
     empty(container, 'No map_loaded events yet.');
@@ -653,6 +732,7 @@ const SECTIONS = [
   ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq9', summary => summary.redirectValue, renderBq9],
   ['bq10', summary => summary.predictionAccuracy, renderBq10],
+  ['bq12', summary => summary.specialAvailability, renderBq12],
   ['bq1', summary => summary.mapLoad, renderBq1],
   ['bq2', summary => summary.walkingTime, renderBq2],
   ['bq3', summary => summary.filterUsage, renderBq3],
