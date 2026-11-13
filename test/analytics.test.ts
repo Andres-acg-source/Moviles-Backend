@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reservationPolicy', 'reservations', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reservationFlow', 'reservationPolicy', 'reservations', 'specialAvailability', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -98,6 +98,27 @@ test('map load BQ1 groups by device, OS version and level', async () => {
     { deviceModel: 'Pixel 8', osVersion: '15', levelCode: 'P2', loads: 1, avgMs: 250, p90Ms: 250, failureRate: 0 },
     { deviceModel: 'iPhone 15', osVersion: '18.1', levelCode: 'P1', loads: 10, avgMs: 550, p90Ms: 910, failureRate: 0.2 }
   ]);
+});
+
+test('reservation flow BQ11 measures request time, failures and crashes by device and OS version', async () => {
+  const iphone = { deviceModel: 'iPhone 15', osVersion: '18.1', platform: 'ios' };
+  const older = { deviceModel: 'iPhone 12', osVersion: '17.5', platform: 'ios' };
+  for (const durationMs of [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]) await track('reservation_request', { ...iphone, durationMs, success: true });
+  await db().query(`UPDATE telemetry_events SET properties = properties || '{"success": false, "errorType": "offline"}' WHERE (properties->>'durationMs')::int >= 900`);
+  await track('reservation_request', { ...older, durationMs: 400, success: false, errorType: 'spot_taken' });
+  for (let index = 0; index < 4; index++) await track('reserve_opened', iphone);
+  await track('reserve_opened', older);
+  await track('app_crash', { ...iphone, inReservationFlow: true, reason: 'NSRangeException: index out of bounds' });
+  await track('app_crash', { ...iphone, inReservationFlow: false });
+  const body = await summary();
+  assert.deepEqual(body.reservationFlow, {
+    totals: { requests: 11, medianMs: 500, p90Ms: 900, failureRate: 0.273, opens: 5, crashes: 1, crashesPer100Opens: 20 },
+    byDevice: [
+      { deviceModel: 'iPhone 12', osVersion: '17.5', requests: 1, medianMs: 400, p90Ms: 400, failureRate: 1, opens: 1, crashes: 0, crashesPer100Opens: 0 },
+      { deviceModel: 'iPhone 15', osVersion: '18.1', requests: 10, medianMs: 550, p90Ms: 910, failureRate: 0.2, opens: 4, crashes: 1, crashesPer100Opens: 25 }
+    ],
+    errors: { offline: 2, spot_taken: 1 }
+  });
 });
 
 test('prediction usage BQ8 classifies each user-day and only counts real check-ins', async () => {

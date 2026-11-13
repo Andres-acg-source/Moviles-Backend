@@ -7,6 +7,7 @@ import { parking } from './parking.js';
 import { predictionAccuracy } from './prediction-accuracy.js';
 import { predictionUsage } from './prediction-usage.js';
 import { redirectValue } from './redirect-value.js';
+import { reservationFlow } from './reservation-flow.js';
 import { reservationPolicy } from './reservation-policy.js';
 import { reservations } from './reservations.js';
 import { specialAvailability } from './special-availability.js';
@@ -14,9 +15,9 @@ import { unmetDemand } from './unmet-demand.js';
 import { walkingTime } from './walking-time.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
-    leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability()
+    leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability(), reservationFlow()
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -33,6 +34,7 @@ export async function analyticsSummary() {
     predictionUsage: prediction,
     redirectValue: redirects,
     predictionAccuracy: accuracy,
-    specialAvailability: special
+    specialAvailability: special,
+    reservationFlow: flow
   };
 }
