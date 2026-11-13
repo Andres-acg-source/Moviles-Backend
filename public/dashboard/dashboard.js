@@ -16,6 +16,7 @@ const storage = {
 let token = storage.get();
 let timer = null;
 let lastSummary = null;
+let simKey = null;
 
 // ---------------------------------------------------------------- DOM and format helpers
 
@@ -842,6 +843,8 @@ function showBoard() {
 function signOut(message = '') {
   token = null;
   lastSummary = null;
+  simKey = null;
+  $('sim-status').textContent = '';
   storage.clear();
   showLogin(message);
 }
@@ -874,6 +877,40 @@ $('login-form').addEventListener('submit', async event => {
   }
 });
 
+function askSimKey() {
+  if (!simKey) simKey = window.prompt('Simulator key (SIM_KEY)')?.trim() || null;
+  return simKey;
+}
+
+async function runScenario(path, body, describe) {
+  const key = askSimKey();
+  if (!key) return;
+  const status = $('sim-status');
+  status.textContent = 'Sending…';
+  try {
+    const response = await fetch(`${API}/sim/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-sim-key': key },
+      body: JSON.stringify(body)
+    });
+    if (response.status === 403) {
+      simKey = null;
+      throw new Error('Wrong simulator key.');
+    }
+    if (response.status === 404) throw new Error('The simulator is off on this server.');
+    if (!response.ok) throw new Error(`The server answered ${response.status}.`);
+    status.textContent = describe(await response.json());
+    await load();
+  } catch (error) {
+    status.textContent = error instanceof TypeError ? 'Could not reach the server.' : error.message;
+  }
+}
+
+const clock = value => new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+$('fill-campus').addEventListener('click', () =>
+  runScenario('scenario', { occupancy: 100, minutes: 15 }, ({ until }) => `Campus full until ${clock(until)}`));
+$('reset-campus').addEventListener('click', () => runScenario('reset', {}, () => 'Campus back to normal'));
 $('refresh').addEventListener('click', load);
 $('auto').addEventListener('change', schedule);
 $('signout').addEventListener('click', () => signOut());
