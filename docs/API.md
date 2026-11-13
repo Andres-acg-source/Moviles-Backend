@@ -439,6 +439,9 @@ Events used by the analytics:
 | `reserve_failed` | `platform`, `reason`: `spot_taken` \| `already_active` \| `expired` \| `offline` \| `server_error` \| `other` | BQ7 |
 | `lot_redirected` | `platform`, `lotId` (when the driver taps Navigate on a nearby lot) | BQ9 |
 | `lot_arrival_confirmed` | `platform`, `lotId`, `parked` (boolean), `minutesAfter` (minutes since the redirect) | BQ9 |
+| `reservation_request` | `durationMs`, `success`, `errorType?`: `spot_taken` \| `already_active` \| `offline` \| `server_error` \| `other`, `deviceModel`, `osVersion`, `platform` | BQ11 |
+| `reserve_opened` | `deviceModel`, `osVersion`, `platform` (when the Reserve screen opens) | BQ11 |
+| `app_crash` | `inReservationFlow` (boolean), `reason?`, `deviceModel`, `osVersion`, `platform` (sent on the next launch after a session that did not close normally) | BQ11 |
 
 ### GET /api/v1/analytics/summary
 
@@ -517,6 +520,7 @@ Section notes:
 | `leadTime` (BQ6) | The personal advice of `/recommendations/lead-time` for every user with at least 3 finished reservations, grouped in `buckets`. `medianP80TravelMinutes` is the median of the users' 80th percentiles and `expiredShare` the share of finished user reservations that expired |
 | `conversionFunnel` (BQ7) | Last 28 days. The unit is one user on one Bogotá day. A step counts only if the previous one happened that day: `availability_viewed` → `spot_selected` → `reserve_confirm_tapped` → a user reservation created. `fromPrevious` is the share kept from the previous step, `biggestDrop` is the step that loses the largest share, `failures` counts `reserve_failed` by `reason` and `daily` covers the last 14 days |
 | `predictionAccuracy` (BQ10) | Last 7 days. Each occupancy snapshot is compared with the prediction for its level, weekday and 15-minute slot, built like `/predictions`: the average occupancy of the same weekday and slot in the 28 days before the snapshot's Bogotá day. `byLevel` only counts snapshots that have that history; `meanAbsError` is the average of `|real − predicted|` and `overall.meanAbsError` is `null` without samples. `forecastViews` counts `forecast_viewed` events of the last 7 days by `platform` |
+| `reservationFlow` (BQ11) | All time, grouped by `deviceModel` + `osVersion`. `medianMs` and `p90Ms` use `percentile_cont` over `reservation_request.durationMs`; `failureRate` is the share of requests with `success: false` and `errors` counts them by `errorType`. Only `app_crash` events with `inReservationFlow: true` are counted, and `crashesPer100Opens = crashes ÷ reserve_opened × 100`. Rates are `null` when the denominator is 0 |
 
 `reservationPolicy` fields:
 
@@ -553,6 +557,13 @@ Section notes:
     { "level": "P2", "samples": 672, "predictedAvg": 0.48, "realAvg": 0.462, "meanAbsError": 0.058 }
   ],
   "overall": { "samples": 1344, "meanAbsError": 0.065 }
+},
+"reservationFlow": {
+  "totals": { "requests": 11, "medianMs": 500, "p90Ms": 900, "failureRate": 0.273, "opens": 5, "crashes": 1, "crashesPer100Opens": 20 },
+  "byDevice": [
+    { "deviceModel": "iPhone 15", "osVersion": "18.1", "requests": 10, "medianMs": 550, "p90Ms": 910, "failureRate": 0.2, "opens": 4, "crashes": 1, "crashesPer100Opens": 25 }
+  ],
+  "errors": { "offline": 2, "spot_taken": 1 }
 }
 ```
 
