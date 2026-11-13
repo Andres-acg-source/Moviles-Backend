@@ -517,6 +517,34 @@ function renderBq10(container, data) {
 
 // ---------------------------------------------------------------- BQ12: special spot availability
 
+function renderBq11(container, data) {
+  const { totals, byDevice, errors } = data;
+  if (!totals.requests && !totals.opens) {
+    empty(container, 'No reservation_request or reserve_opened events yet.');
+    return;
+  }
+  stats(container, [
+    { label: 'Median response', value: fmtMs(totals.medianMs), note: `${fmtInt(totals.requests)} requests` },
+    { label: 'P90 response', value: fmtMs(totals.p90Ms) },
+    { label: 'Failed requests', value: fmtPct(totals.failureRate, 1) },
+    { label: 'Crashes per 100 opens', value: totals.crashesPer100Opens === null ? '–' : totals.crashesPer100Opens.toFixed(1), note: `${fmtInt(totals.crashes)} crashes in ${fmtInt(totals.opens)} opens` }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  const timed = byDevice.filter(row => row.p90Ms !== null).sort((a, b) => b.p90Ms - a.p90Ms).slice(0, 6);
+  if (timed.length) {
+    hbars(block(split, 'P90 response time by device and OS'), timed.map(row => ({ label: `${row.deviceModel} · ${row.osVersion}`, value: row.p90Ms, note: `${fmtInt(row.requests)} requests` })), { format: fmtMs, valueLabel: 'p90' });
+  }
+  const failures = Object.entries(errors);
+  if (failures.length) {
+    hbars(block(split, 'Failed requests by cause'), failures.map(([label, value]) => ({ label, value })), { valueLabel: 'requests' });
+  }
+  const top = [...byDevice].sort((a, b) => (b.requests + b.opens) - (a.requests + a.opens)).slice(0, 8);
+  const devices = block(container, byDevice.length > 8 ? `By device and OS (top 8 of ${byDevice.length})` : 'By device and OS');
+  table(devices, ['Device', 'OS', 'Requests', 'Median', 'P90', 'Failed', 'Opens', 'Crashes / 100'],
+    top.map(row => [row.deviceModel, row.osVersion, fmtInt(row.requests), fmtMs(row.medianMs), fmtMs(row.p90Ms), fmtPct(row.failureRate, 1), fmtInt(row.opens), row.crashesPer100Opens === null ? '–' : row.crashesPer100Opens.toFixed(1)]), [2, 3, 4, 5, 6, 7]);
+}
+
 function renderBq12(container, data) {
   if (!data.levels?.length) {
     empty(container, 'No parking levels or special-spot snapshots available yet.');
@@ -732,6 +760,7 @@ const SECTIONS = [
   ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq9', summary => summary.redirectValue, renderBq9],
   ['bq10', summary => summary.predictionAccuracy, renderBq10],
+  ['bq11', summary => summary.reservationFlow, renderBq11],
   ['bq12', summary => summary.specialAvailability, renderBq12],
   ['bq1', summary => summary.mapLoad, renderBq1],
   ['bq2', summary => summary.walkingTime, renderBq2],
