@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import { lotImagePaths } from './lot-images.js';
+import { buildingImagePaths, lotImagePaths } from './lot-images.js';
 
 export const DEFAULT_DESTINATION = 'sd';
 const WALK_SPEED_M_PER_S = 1.3;
@@ -8,9 +8,12 @@ const SECONDS_PER_UNDERGROUND_LEVEL = 60;
 export const walkMinutes = (dx: number, dy: number, undergroundDepth: number) =>
   Math.ceil((Math.hypot(dx, dy) / WALK_SPEED_M_PER_S + SECONDS_PER_UNDERGROUND_LEVEL * undergroundDepth) / 60);
 
-export async function buildings() {
-  const { rows } = await db().query<{ id: string; name: string }>('SELECT id, name FROM buildings WHERE listed ORDER BY name');
-  return rows;
+export async function buildings(imagesDir?: string) {
+  const [{ rows }, images] = await Promise.all([
+    db().query<{ id: string; name: string }>('SELECT id, name FROM buildings WHERE listed ORDER BY name'),
+    buildingImagePaths(imagesDir)
+  ]);
+  return rows.map(row => ({ ...row, imageUrl: images.get(row.id) ?? null }));
 }
 
 export async function levelSummary() {

@@ -156,11 +156,12 @@ JWT: Yes.
 ### GET /api/v1/buildings
 
 JWT: No. These are the destinations offered for walking times. Only Edificio Santo Domingo is offered. The ids `ml`, `biblioteca` and `deportivo` are no longer listed, but `/levels/{code}/spots` still accepts them so older app versions keep working.
+`imageUrl` is the photo of the building, saved as `public/images/buildings/{id}.jpg` (also `.jpeg`, `.png` or `.webp`), or `null` when there is no photo.
 
 ```json
 200
 [
-  { "id": "sd", "name": "Edificio Santo Domingo" }
+  { "id": "sd", "name": "Edificio Santo Domingo", "imageUrl": "/images/buildings/sd.jpg" }
 ]
 ```
 
@@ -321,7 +322,7 @@ JWT: No. Returns off-campus alternatives. There is no live availability for them
 
 ### GET /images/{file}
 
-JWT: No. Serves the photos of the nearby lots from `public/images/`. A lot gets a photo when a file named with its id is there, for example `nearby-1.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
+JWT: No. Serves the photos of the nearby lots from `public/images/` and the photos of the buildings from `public/images/buildings/`. A lot or a building gets a photo when a file named with its id is there, for example `nearby-1.jpg` or `buildings/sd.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
 
 ## Prediction and recommendations
 
