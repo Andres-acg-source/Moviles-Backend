@@ -754,9 +754,36 @@ function renderBq5(container, data) {
     top.map(row => [row.levelCode, row.slot, fmtInt(row.total.created), fmtPct(row.total.noShowRate), fmtMin(row.total.p90CheckInMinutes), fmtMin(row.total.recommendedWindowMinutes), fmtInt(row.total.heldSpots)]), [2, 3, 4, 5, 6]);
 }
 
+const SEARCH_MODES = { voice: 'Voice', text: 'Text' };
+
+function renderBq13(container, data) {
+  if (!data.searches) {
+    empty(container, `No searches in the last ${data.windowDays} days. They appear when a driver searches in Find a spot by voice or by text.`);
+    return;
+  }
+  const [voice, text] = data.byMode;
+  const leader = data.higherSelectionMode ? `${SEARCH_MODES[data.higherSelectionMode]} ends in a spot more often` : 'Both modes are even';
+  stats(container, [
+    { label: 'Searches by voice', value: fmtPct(data.voiceShare), note: `${fmtInt(voice.searches)} of ${fmtInt(data.searches)} searches, last ${data.windowDays} days` },
+    { label: 'Ended in a chosen spot', value: `${fmtPct(voice.selectionRate)} vs ${fmtPct(text.selectionRate)}`, note: `Voice vs text. ${leader}` },
+    { label: 'Voice that ended in the keyboard', value: fmtPct(data.fallbackRate), note: `${fmtInt(data.keyboardFallbacks)} of ${fmtInt(data.voiceAttempts)} voice attempts` }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  hbars(block(split, 'Searches by mode'), data.byMode.map(row => ({
+    label: SEARCH_MODES[row.mode], value: row.searches, note: `${fmtInt(row.noResults)} without results`
+  })), { valueLabel: 'searches' });
+  hbars(block(split, 'Share that ended in a chosen spot'), data.byMode.map(row => ({
+    label: SEARCH_MODES[row.mode], value: row.selectionRate ?? 0, note: `${fmtInt(row.selected)} of ${fmtInt(row.searches)} searches`
+  })), { format: value => fmtPct(value), max: 1, valueLabel: 'chosen' });
+  tableView(container, ['Platform', 'Mode', 'Searches', 'Ended in a spot', 'Share'],
+    data.byPlatform.map(row => [row.platform, SEARCH_MODES[row.mode], fmtInt(row.searches), fmtInt(row.selected), fmtPct(row.selectionRate)]), [2, 3, 4]);
+}
+
 // ---------------------------------------------------------------- render, load, session
 
 const SECTIONS = [
+  ['bq13', summary => summary.searchModality, renderBq13],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq9', summary => summary.redirectValue, renderBq9],

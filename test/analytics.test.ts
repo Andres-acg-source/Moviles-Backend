@@ -33,7 +33,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reservationFlow', 'reservationPolicy', 'reservations', 'specialAvailability', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -435,4 +435,66 @@ test('conversion funnel BQ7 follows each user and day through the reservation st
   assert.deepEqual(android, { platform: 'android', viewed: 3, selected: 2, confirmed: 2, reserved: 1, conversionRate: 0.333 });
   assert.equal(body.daily.length, 14);
   assert.deepEqual(body.daily.at(-1), { day: body.daily.at(-1).day, viewed: 4, reserved: 1, conversionRate: 0.25 });
+});
+
+test('search modality BQ13 counts each search once and checks whether it ended in a chosen spot', async () => {
+  const driver = await createUser();
+  const search = (searchId: string, mode: string, properties: Record<string, unknown> = {}) =>
+    track('spot_search', { searchId, mode, resultCount: 4, fromCache: false, offline: false, platform: 'android', ...properties }, driver.token);
+  const select = (searchId: string, mode: string) => track('spot_selected', { searchId, mode, platform: 'android' }, driver.token);
+
+  for (const response of [
+    await search('voice-1', 'voice'),
+    await search('voice-2', 'voice', { resultCount: 0 }),
+    await search('text-1', 'text'),
+    await search('text-1', 'text'),
+    await search('text-2', 'text', { voiceFallback: true }),
+    await search('text-3', 'text', { platform: 'ios' }),
+    await search('gesture-1', 'gesture'),
+    await select('voice-1', 'voice'),
+    await select('text-1', 'text'),
+    await select('text-3', 'text'),
+    await select('missing', 'text')
+  ]) assert.equal(response.status, 202);
+  await track('spot_search', { mode: 'voice', platform: 'android' }, driver.token);
+  await db().query(
+    `INSERT INTO telemetry_events (name, properties, created_at)
+     VALUES ('spot_search', '{"searchId": "old", "mode": "voice", "platform": "android"}', now() - interval '40 days')`
+  );
+
+  assert.deepEqual((await summary()).searchModality, {
+    windowDays: 28,
+    searches: 5,
+    voiceShare: 0.4,
+    voiceAttempts: 3,
+    keyboardFallbacks: 1,
+    fallbackRate: 0.333,
+    higherSelectionMode: 'text',
+    byMode: [
+      { mode: 'voice', searches: 2, selected: 1, selectionRate: 0.5, noResults: 1 },
+      { mode: 'text', searches: 3, selected: 2, selectionRate: 0.667, noResults: 0 }
+    ],
+    byPlatform: [
+      { platform: 'android', mode: 'voice', searches: 2, selected: 1, selectionRate: 0.5 },
+      { platform: 'android', mode: 'text', searches: 2, selected: 1, selectionRate: 0.5 },
+      { platform: 'ios', mode: 'text', searches: 1, selected: 1, selectionRate: 1 }
+    ]
+  });
+});
+
+test('search modality BQ13 is empty without searches', async () => {
+  assert.deepEqual((await summary()).searchModality, {
+    windowDays: 28,
+    searches: 0,
+    voiceShare: null,
+    voiceAttempts: 0,
+    keyboardFallbacks: 0,
+    fallbackRate: null,
+    higherSelectionMode: null,
+    byMode: [
+      { mode: 'voice', searches: 0, selected: 0, selectionRate: null, noResults: 0 },
+      { mode: 'text', searches: 0, selected: 0, selectionRate: null, noResults: 0 }
+    ],
+    byPlatform: []
+  });
 });

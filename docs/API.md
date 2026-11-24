@@ -434,7 +434,7 @@ Events used by the analytics:
 | `filter_applied` | `filter`: `available` \| `vip` \| `electric` \| `accessible` | BQ3 |
 | `forecast_viewed` | `platform`, `source`, `screen?`, `arrivalSlot?` (send with the token). `source` is `home_forecast` \| `arrival_time_changed` on Android and `home_open` \| `arrival_change` on iOS; both pairs mean the same and no business question reads it | BQ8, BQ10 |
 | `availability_viewed` | `platform`, `source`: `find_spot` \| `level_map`, `levelCode?` (send with the token, only when the spots come from the server) | BQ7, BQ8 |
-| `spot_selected` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
+| `spot_selected` | `platform`, `levelCode?`, `spotCode?`, `searchId?`, `mode?` (send with the token; `searchId` and `mode` come from the search that showed the spot) | BQ7, BQ13 |
 | `reserve_confirm_tapped` | `platform`, `levelCode?`, `spotCode?` (send with the token) | BQ7 |
 | `reserve_failed` | `platform`, `reason`: `spot_taken` \| `already_active` \| `expired` \| `offline` \| `server_error` \| `other` | BQ7 |
 | `lot_redirected` | `platform`, `lotId` (when the driver taps Navigate on a nearby lot) | BQ9 |
@@ -442,6 +442,10 @@ Events used by the analytics:
 | `reservation_request` | `durationMs`, `success`, `errorType?`: `spot_taken` \| `already_active` \| `offline` \| `server_error` \| `other`, `deviceModel`, `osVersion`, `platform` | BQ11 |
 | `reserve_opened` | `deviceModel`, `osVersion`, `platform` (when the Reserve screen opens) | BQ11 |
 | `app_crash` | `inReservationFlow` (boolean), `reason?`, `deviceModel`, `osVersion`, `platform` (sent on the next launch after a session that did not close normally) | BQ11 |
+| `spot_search` | `searchId`, `mode`: `voice` \| `text`, `resultCount`, `fromCache` (boolean), `offline` (boolean), `voiceFallback?` (boolean, a typed search that started as a failed voice attempt), `platform`. Sent once per search when Find a spot shows its result | BQ13 |
+| `voice_recognition` | `latencyMs`, `outcome`: `ok` \| `no_match` \| `error` \| `no_permission` \| `offline`, `level?` (level of the open reservation), `deviceModel`, `osVersion`, `platform` | BQ16 |
+| `week_viewed` | `level`, `arrivalHour`, `offline` (boolean), `platform` (when Plan your week shows a level) | BQ14 |
+| `week_slot_used` | `day` (`yyyy-mm-dd`), `hour`, `level`, `predicted` (percentage), `platform` (when the driver taps "Use this time") | BQ14 |
 
 ### GET /api/v1/analytics/summary
 
@@ -521,6 +525,7 @@ Section notes:
 | `conversionFunnel` (BQ7) | Last 28 days. The unit is one user on one Bogotá day. A step counts only if the previous one happened that day: `availability_viewed` → `spot_selected` → `reserve_confirm_tapped` → a user reservation created. `fromPrevious` is the share kept from the previous step, `biggestDrop` is the step that loses the largest share, `failures` counts `reserve_failed` by `reason` and `daily` covers the last 14 days |
 | `predictionAccuracy` (BQ10) | Last 7 days. Each occupancy snapshot is compared with the prediction for its level, weekday and 15-minute slot, built like `/predictions`: the average occupancy of the same weekday and slot in the 28 days before the snapshot's Bogotá day. `byLevel` only counts snapshots that have that history; `meanAbsError` is the average of `|real − predicted|` and `overall.meanAbsError` is `null` without samples. `forecastViews` counts `forecast_viewed` events of the last 7 days by `platform` |
 | `reservationFlow` (BQ11) | All time, grouped by `deviceModel` + `osVersion`. `medianMs` and `p90Ms` use `percentile_cont` over `reservation_request.durationMs`; `failureRate` is the share of requests with `success: false` and `errors` counts them by `errorType`. Only `app_crash` events with `inReservationFlow: true` are counted, and `crashesPer100Opens = crashes ÷ reserve_opened × 100`. Rates are `null` when the denominator is 0 |
+| `searchModality` (BQ13) | Last 28 days, by event occurrence time. A search is one `searchId` of `spot_search` with `mode` `voice` or `text`, counted once even if it was sent twice. It ended in a chosen spot when any `spot_selected` has the same `searchId`. `voiceShare = voice ÷ searches`, `selectionRate = selected ÷ searches` per mode, `voiceAttempts = voice searches + keyboardFallbacks` and `fallbackRate = keyboardFallbacks ÷ voiceAttempts`. `higherSelectionMode` is `null` when a mode has no searches or both rates are equal |
 
 `reservationPolicy` fields:
 
