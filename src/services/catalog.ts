@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import { buildingImagePaths, lotImagePaths } from './lot-images.js';
+import { buildingImagePaths, levelImagePaths, lotImagePaths } from './lot-images.js';
 
 export const DEFAULT_DESTINATION = 'sd';
 const WALK_SPEED_M_PER_S = 1.3;
@@ -16,18 +16,25 @@ export async function buildings(imagesDir?: string) {
   return rows.map(row => ({ ...row, imageUrl: images.get(row.id) ?? null }));
 }
 
-export async function levelSummary() {
-  const { rows } = await db().query<{ code: string; name: string; underground: boolean; total: number; free: number; reserved: number; occupied: number; disabled: number }>(
-    `SELECT l.code, l.name, l.underground,
-            count(s.id) FILTER (WHERE s.status <> 'disabled')::int AS total,
-            count(s.id) FILTER (WHERE s.status = 'free')::int AS free,
-            count(s.id) FILTER (WHERE s.status = 'reserved')::int AS reserved,
-            count(s.id) FILTER (WHERE s.status = 'occupied')::int AS occupied,
-            count(s.id) FILTER (WHERE s.status = 'disabled')::int AS disabled
-       FROM levels l LEFT JOIN spots s ON s.level_code = l.code
-      GROUP BY l.code ORDER BY l.sort`
-  );
-  return { generatedAt: new Date().toISOString(), campusFull: rows.every(level => level.free === 0), levels: rows };
+export async function levelSummary(imagesDir?: string) {
+  const [{ rows }, images] = await Promise.all([
+    db().query<{ code: string; name: string; underground: boolean; total: number; free: number; reserved: number; occupied: number; disabled: number }>(
+      `SELECT l.code, l.name, l.underground,
+              count(s.id) FILTER (WHERE s.status <> 'disabled')::int AS total,
+              count(s.id) FILTER (WHERE s.status = 'free')::int AS free,
+              count(s.id) FILTER (WHERE s.status = 'reserved')::int AS reserved,
+              count(s.id) FILTER (WHERE s.status = 'occupied')::int AS occupied,
+              count(s.id) FILTER (WHERE s.status = 'disabled')::int AS disabled
+         FROM levels l LEFT JOIN spots s ON s.level_code = l.code
+        GROUP BY l.code ORDER BY l.sort`
+    ),
+    levelImagePaths(imagesDir)
+  ]);
+  return {
+    generatedAt: new Date().toISOString(),
+    campusFull: rows.every(level => level.free === 0),
+    levels: rows.map(level => ({ ...level, imageUrl: images.get(level.code) ?? null }))
+  };
 }
 
 export interface SpotFilters { available?: boolean; accessible?: boolean; ev?: boolean; vip?: boolean }
