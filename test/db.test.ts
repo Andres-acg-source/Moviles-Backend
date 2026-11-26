@@ -11,7 +11,7 @@ after(async () => { await cleanup(); });
 test('migrations are idempotent', async () => {
   assert.deepEqual(await migrate(), []);
   const { rows } = await db().query('SELECT name FROM schema_migrations ORDER BY name');
-  assert.deepEqual(rows.map(row => row.name), ['001_init.sql', '002_reservation_locks.sql', '003_listed_buildings.sql']);
+  assert.deepEqual(rows.map(row => row.name), ['001_init.sql', '002_reservation_locks.sql', '003_listed_buildings.sql', '004_special_availability.sql']);
 });
 
 test('seed creates 156 unique free spots and is idempotent', async () => {
