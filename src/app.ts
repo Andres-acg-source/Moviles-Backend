@@ -10,6 +10,7 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { healthRoutes } from './routes/health.js';
 import { imageRoutes } from './routes/images.js';
 import { predictionRoutes } from './routes/predictions.js';
+import { reportRoutes } from './routes/reports.js';
 import { reservationRoutes } from './routes/reservations.js';
 import { simRoutes } from './routes/sim.js';
 import { telemetryRoutes } from './routes/telemetry.js';
@@ -39,6 +40,7 @@ export function createApp(options: AppOptions = {}) {
   app.use(requestLogger);
   app.use(helmet());
   app.use(cors());
+  app.use('/api/v1/reports', express.json({ limit: '512kb' }));
   app.use(express.json({ limit: '100kb' }));
   app.use(healthRoutes());
   app.use(dashboardRoutes());
@@ -47,6 +49,7 @@ export function createApp(options: AppOptions = {}) {
   api.use(authRoutes(limiter(options.authLimitPerMinute ?? 10)));
   api.use(catalogRoutes(options.imagesDir));
   api.use(reservationRoutes());
+  api.use(reportRoutes());
   api.use(predictionRoutes());
   api.use(telemetryRoutes(limiter(options.telemetryLimitPerMinute ?? 120)));
   api.use(analyticsRoutes());

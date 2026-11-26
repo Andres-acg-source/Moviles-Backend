@@ -4,7 +4,7 @@ Contract shared by the iOS (SwiftUI) and Android (Flutter) apps. Both apps read 
 
 - Base URL: `https://<render-service>.onrender.com` (local: `http://localhost:3000`).
 - Every route lives under `/api/v1`, except `GET /health`.
-- Request and response bodies are JSON (`Content-Type: application/json`). Bodies larger than 100 kB are rejected with 413.
+- Request and response bodies are JSON (`Content-Type: application/json`). Bodies larger than 100 kB are rejected with 413, except on `/reports`, which takes up to 512 kB because the body carries a photo.
 - Timestamps are ISO 8601 in UTC (`2026-10-01T14:05:00.000Z`). Business hours, 15-minute slots and weekdays are computed in Bogotá time (UTC-5, no daylight saving time).
 - Weekdays use `0 = Sunday … 6 = Saturday`.
 
@@ -43,9 +43,9 @@ Validation errors (400) also include `details`:
 | 400 | Invalid body or query (`Invalid request`), malformed JSON (`Malformed JSON`), unknown destination, invalid date |
 | 401 | Missing or invalid token, wrong credentials, deleted user |
 | 403 | Wrong `X-Sim-Key` |
-| 404 | Unknown route (`Not found`), level, spot or reservation |
+| 404 | Unknown route (`Not found`), level, spot, reservation, or a report photo that is not yours |
 | 409 | Email already registered, spot not free, an active reservation already exists, reservation expired, not active or already closed |
-| 413 | Body larger than 100 kB |
+| 413 | Body larger than 100 kB (512 kB on `/reports`), or a report photo larger than 300 KB |
 | 429 | Rate limit exceeded (`Too many requests`) |
 | 500 | Unexpected error (`Internal server error`) |
 | 503 | `/health` only: the database is not reachable |
@@ -324,6 +324,52 @@ JWT: No. Returns off-campus alternatives. There is no live availability for them
 
 JWT: No. Serves the photos of the nearby lots from `public/images/` and the photos of the buildings from `public/images/buildings/`. A lot or a building gets a photo when a file named with its id is there, for example `nearby-1.jpg` or `buildings/sd.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
 
+## Reports
+
+A driver reports a spot that does not match what the app shows. Each report saves the state the app was showing for that spot when the driver made it, which is what BQ15 compares.
+
+### POST /api/v1/reports
+
+JWT: Yes.
+
+| Field | Description |
+|---|---|
+| `clientId` | UUID made by the phone. Sending the same `clientId` again returns the report saved the first time with 200, so a retry after losing the signal never creates a second report |
+| `spotId` | Spot id, for example `P2-A-14`. The level comes from the spot |
+| `kind` | `occupied` (occupied without a reservation), `blocked`, `damaged` (sign or paint) or `other` |
+| `shownStatus` | `free`, `reserved`, `occupied` or `disabled`: the state the app showed for the spot |
+| `note` | Optional, up to 280 characters. Blank notes are saved as `null` |
+| `reportedAt` | Optional ISO time when the driver made the report. Times in the future become now, and times older than 7 days become 7 days ago. Default: now |
+| `photo` | Optional JPEG in base64, already compressed on the phone, up to 300 KB |
+
+The photo is saved in PostgreSQL because the disk of the Render free plan is erased on every deploy.
+
+```json
+201
+{
+  "id": "6c3f6a8e-2b0f-4c41-9a51-0d2b7c1e9f10",
+  "clientId": "a2f1c8a4-0a51-4f5b-8f8e-3a7d2c9e1b44",
+  "spotId": "P2-A-14",
+  "spotCode": "A-14",
+  "levelCode": "P2",
+  "kind": "occupied",
+  "note": "A car without a reservation since 8:10",
+  "shownStatus": "free",
+  "reportedAt": "2026-11-24T13:14:00.000Z",
+  "photoUrl": "/api/v1/reports/6c3f6a8e-2b0f-4c41-9a51-0d2b7c1e9f10/photo"
+}
+```
+
+Errors: 400 invalid body or `Photo must be a JPEG`, 404 `Parking spot not found`, 413 `Photo is larger than 300 KB`.
+
+### GET /api/v1/reports/mine
+
+JWT: Yes. Returns `{ "reports": Report[] }` with the reports of the user, newest first, at most 50.
+
+### GET /api/v1/reports/:id/photo
+
+JWT: Yes. Returns the JPEG of the report with `Cache-Control: private, max-age=1209600` (14 days, the time the apps keep a report photo). `photoUrl` is a path on this server, so the apps add it to the base URL and send the same `Authorization` header. A report of another user, a report without a photo or an unknown id return 404.
+
 ## Prediction and recommendations
 
 ### GET /api/v1/predictions?level=&date=
@@ -527,6 +573,7 @@ Section notes:
 | `predictionAccuracy` (BQ10) | Last 7 days. Each occupancy snapshot is compared with the prediction for its level, weekday and 15-minute slot, built like `/predictions`: the average occupancy of the same weekday and slot in the 28 days before the snapshot's Bogotá day. `byLevel` only counts snapshots that have that history; `meanAbsError` is the average of `|real − predicted|` and `overall.meanAbsError` is `null` without samples. `forecastViews` counts `forecast_viewed` events of the last 7 days by `platform` |
 | `reservationFlow` (BQ11) | All time, grouped by `deviceModel` + `osVersion`. `medianMs` and `p90Ms` use `percentile_cont` over `reservation_request.durationMs`; `failureRate` is the share of requests with `success: false` and `errors` counts them by `errorType`. Only `app_crash` events with `inReservationFlow: true` are counted, and `crashesPer100Opens = crashes ÷ reserve_opened × 100`. Rates are `null` when the denominator is 0 |
 | `searchModality` (BQ13) | Last 28 days, by event occurrence time. A search is one `searchId` of `spot_search` with `mode` `voice` or `text`, counted once even if it was sent twice. It ended in a chosen spot when any `spot_selected` has the same `searchId`. `voiceShare = voice ÷ searches`, `selectionRate = selected ÷ searches` per mode, `voiceAttempts = voice searches + keyboardFallbacks` and `fallbackRate = keyboardFallbacks ÷ voiceAttempts`. `higherSelectionMode` is `null` when a mode has no searches or both rates are equal |
+| `reportMismatch` (BQ15) | Reports of the last 28 days by `reportedAt`, grouped by level and hour in Bogotá time. A report contradicts the app when `shownStatus` was `free` and `kind` is `occupied` or `blocked`. `mismatchRate = contradicting ÷ reports`, overall, per level (`byLevel`, every level even without reports) and per level and hour (`bySlot`). `worstSlot` is the level and hour with the most contradicting reports (the higher rate on a tie), or `null` when no report contradicts the app |
 
 `reservationPolicy` fields:
 

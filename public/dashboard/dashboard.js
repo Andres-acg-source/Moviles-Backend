@@ -301,7 +301,12 @@ function lines(container, labels, series, { format = fmtInt, yMax, xLabel = valu
 }
 
 /** Heatmap on a single-hue ramp. matrix[row][col] holds counts. */
-function heatmap(container, rowLabels, colLabels, matrix, { rowTitle = label => label, colTitle = label => label } = {}) {
+function heatmap(container, rowLabels, colLabels, matrix, {
+  rowTitle = label => label,
+  colTitle = label => label,
+  description = 'Heatmap of unmet demand by weekday and hour',
+  unit = value => (value === 1 ? 'query without a free spot' : 'queries without a free spot')
+} = {}) {
   const max = Math.max(1, ...matrix.flat());
   const shade = value => (value <= 0 ? css('--seq-0') : css(`--seq-${Math.min(7, 1 + Math.floor((value / max) * 6.999))}`));
   chart(container, (node, width) => {
@@ -311,7 +316,7 @@ function heatmap(container, rowLabels, colLabels, matrix, { rowTitle = label => 
     const cellWidth = Math.max(8, (width - labelWidth) / colLabels.length);
     const cellHeight = 24;
     const height = top + rowLabels.length * (cellHeight + gap);
-    const svg = s('svg', { width, height, role: 'img', 'aria-label': 'Heatmap of unmet demand by weekday and hour' }, node);
+    const svg = s('svg', { width, height, role: 'img', 'aria-label': description }, node);
     colLabels.forEach((label, col) => {
       if (col % 3 === 0) text(svg, label, { x: labelWidth + col * cellWidth + cellWidth / 2, y: 12, 'text-anchor': 'middle', class: 'axis-text' });
     });
@@ -323,7 +328,7 @@ function heatmap(container, rowLabels, colLabels, matrix, { rowTitle = label => 
         const cell = s('rect', {
           class: 'mark', x: labelWidth + colIndex * cellWidth + gap / 2, y, width: Math.max(1, cellWidth - gap), height: cellHeight, rx: 2, fill: shade(value)
         }, svg);
-        bindTip(cell, `${rowTitle(label)} ${colTitle(col)}`, [{ value: fmtInt(value), label: value === 1 ? 'query without a free spot' : 'queries without a free spot' }]);
+        bindTip(cell, `${rowTitle(label)} ${colTitle(col)}`, [{ value: fmtInt(value), label: unit(value) }]);
       });
     });
   });
@@ -780,10 +785,47 @@ function renderBq13(container, data) {
     data.byPlatform.map(row => [row.platform, SEARCH_MODES[row.mode], fmtInt(row.searches), fmtInt(row.selected), fmtPct(row.selectionRate)]), [2, 3, 4]);
 }
 
+const hourLabel = hour => `${String(Math.min(23, Math.max(0, hour))).padStart(2, '0')}:00`;
+
+function renderBq15(container, data) {
+  if (!data.reports) {
+    empty(container, `No reports in the last ${data.windowDays} days.`);
+    return;
+  }
+  const worst = data.worstSlot;
+  stats(container, [
+    { label: 'Reports', value: fmtInt(data.reports), note: `last ${data.windowDays} days` },
+    { label: 'Contradict the app', value: fmtPct(data.mismatchRate), note: `${fmtInt(data.contradicting)} found a spot shown as free occupied or blocked` },
+    { label: 'Worst slot', value: worst ? `${worst.level} · ${hourLabel(worst.hour)}` : '–', note: worst ? `${fmtInt(worst.contradicting)} of ${fmtInt(worst.reports)} reports contradict the app` : 'no report contradicts the app' }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  hbars(block(split, 'Share of reports that contradict the app'), data.byLevel.map(row => ({
+    label: row.level,
+    value: row.mismatchRate,
+    color: levelColor(row.level),
+    note: `${fmtInt(row.contradicting)} of ${fmtInt(row.reports)} reports`
+  })), { format: value => fmtPct(value), max: 1, valueLabel: 'of the reports' });
+  const levels = data.byLevel.map(row => row.level);
+  const first = Math.min(6, ...data.bySlot.map(slot => slot.hour));
+  const last = Math.max(21, ...data.bySlot.map(slot => slot.hour));
+  const hours = Array.from({ length: last - first + 1 }, (_, index) => first + index);
+  const matrix = levels.map(level => hours.map(hour =>
+    data.bySlot.find(slot => slot.level === level && slot.hour === hour)?.contradicting ?? 0));
+  heatmap(block(split, 'Reports that contradict the app by level and hour (Bogotá time)'), levels, hours, matrix, {
+    colTitle: hour => hourLabel(hour),
+    description: 'Heatmap of reports that contradict the app by level and hour',
+    unit: value => (value === 1 ? 'report contradicts the app' : 'reports contradict the app')
+  });
+  tableView(container, ['Level', 'Hour', 'Reports', 'Contradict', 'Share'],
+    data.bySlot.map(slot => [slot.level, hourLabel(slot.hour), fmtInt(slot.reports), fmtInt(slot.contradicting), fmtPct(slot.mismatchRate)]), [2, 3, 4]);
+}
+
 // ---------------------------------------------------------------- render, load, session
 
 const SECTIONS = [
   ['bq13', summary => summary.searchModality, renderBq13],
+  ['bq15', summary => summary.reportMismatch, renderBq15],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq9', summary => summary.redirectValue, renderBq9],
