@@ -15,6 +15,9 @@ export const errorTable: Record<string, [number, string]> = {
   RESERVATION_NOT_OPEN: [409, 'Reservation is already closed'],
   INVALID_DATE: [400, 'Invalid date, expected YYYY-MM-DD'],
   INVALID_ARRIVAL: [400, 'Invalid arrivalAt, expected an ISO date-time'],
+  REPORT_NOT_FOUND: [404, 'Report not found'],
+  PHOTO_TOO_LARGE: [413, 'Photo is larger than 300 KB'],
+  PHOTO_NOT_JPEG: [400, 'Photo must be a JPEG'],
   SIM_DISABLED: [404, 'Not found'],
   SIM_FORBIDDEN: [403, 'Invalid simulator key']
 };

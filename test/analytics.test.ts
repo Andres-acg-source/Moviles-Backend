@@ -20,6 +20,7 @@ beforeEach(async () => {
   await db().query('DELETE FROM telemetry_events');
   await db().query('DELETE FROM reservations');
   await db().query('DELETE FROM unmet_demand');
+  await db().query('DELETE FROM spot_reports');
   await db().query('DELETE FROM occupancy_snapshots');
   await setAllSpots('free');
 });
@@ -33,7 +34,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -496,5 +497,56 @@ test('search modality BQ13 is empty without searches', async () => {
       { mode: 'text', searches: 0, selected: 0, selectionRate: null, noResults: 0 }
     ],
     byPlatform: []
+  });
+});
+
+test('report mismatch BQ15 counts the reports that contradict the state shown, by level and hour', async () => {
+  const driver = await createUser();
+  const midnight = bogotaMidnight(bogotaDate(new Date())).getTime();
+  const at = (daysAgo: number, hour: number, minute = 0) => new Date(midnight - daysAgo * DAY_MS + hour * 3_600_000 + minute * 60_000);
+  const reports: [string, string, string, Date][] = [
+    ['P2-A-14', 'occupied', 'free', at(1, 8, 10)],
+    ['P2-A-15', 'blocked', 'free', at(2, 8, 40)],
+    ['P2-A-16', 'damaged', 'free', at(3, 8, 5)],
+    ['P2-A-17', 'occupied', 'occupied', at(1, 8, 20)],
+    ['P1-A-01', 'occupied', 'free', at(1, 17)],
+    ['P1-A-02', 'other', 'reserved', at(5, 17, 30)],
+    ['P3-B-02', 'occupied', 'free', at(40, 8)]
+  ];
+  for (const [spot, kind, shown, reportedAt] of reports) {
+    await db().query(
+      `INSERT INTO spot_reports (user_id, client_id, spot_id, level_code, kind, shown_status, reported_at)
+       VALUES ($1, gen_random_uuid(), $2, split_part($2, '-', 1), $3, $4, $5)`,
+      [driver.id, spot, kind, shown, reportedAt]
+    );
+  }
+
+  assert.deepEqual((await summary()).reportMismatch, {
+    windowDays: 28,
+    reports: 6,
+    contradicting: 3,
+    mismatchRate: 0.5,
+    worstSlot: { level: 'P2', hour: 8, reports: 4, contradicting: 2, mismatchRate: 0.5 },
+    byLevel: [
+      { level: 'P1', reports: 2, contradicting: 1, mismatchRate: 0.5 },
+      { level: 'P2', reports: 4, contradicting: 2, mismatchRate: 0.5 },
+      { level: 'P3', reports: 0, contradicting: 0, mismatchRate: null }
+    ],
+    bySlot: [
+      { level: 'P1', hour: 17, reports: 2, contradicting: 1, mismatchRate: 0.5 },
+      { level: 'P2', hour: 8, reports: 4, contradicting: 2, mismatchRate: 0.5 }
+    ]
+  });
+});
+
+test('report mismatch BQ15 is empty without reports', async () => {
+  assert.deepEqual((await summary()).reportMismatch, {
+    windowDays: 28,
+    reports: 0,
+    contradicting: 0,
+    mismatchRate: null,
+    worstSlot: null,
+    byLevel: ['P1', 'P2', 'P3'].map(level => ({ level, reports: 0, contradicting: 0, mismatchRate: null })),
+    bySlot: []
   });
 });
