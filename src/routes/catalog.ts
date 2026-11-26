@@ -16,7 +16,7 @@ const flag = (value: unknown) => value === 'true';
 export function catalogRoutes(imagesDir?: string) {
   const router = Router();
 
-  router.get('/buildings', asyncRoute(async (_req, res) => res.json(await buildings())));
+  router.get('/buildings', asyncRoute(async (_req, res) => res.json(await buildings(imagesDir))));
 
   router.get('/levels', optionalAuth, asyncRoute(async (req, res) => {
     const summary = await levelSummary();
