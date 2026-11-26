@@ -2,6 +2,8 @@ import { db } from '../db.js';
 import { allSlotLabels, bogotaDate, bogotaLocalSql, bogotaMidnight, bogotaParts, DAY_MS, isValidIsoDate, slotLabel, weekdayOfIsoDate } from '../time.js';
 
 export const HISTORY_DAYS = 28;
+export const WEEK_DAYS = 7;
+export const WEEK_HOURS = Array.from({ length: 14 }, (_, index) => 6 + index);
 const ARRIVAL_DEFAULT_MINUTES = 20;
 
 const local = bogotaLocalSql('taken_at');
@@ -45,6 +47,46 @@ export async function predictions(date?: string, level?: string) {
         const value = averages.get(`${code}|${slot}`);
         return { slot, occupancy: value === undefined ? null : round3(value) };
       })
+    }))
+  };
+}
+
+/**
+ * Plan your week (BQ14): the predicted occupancy of each level for the 7 days that start on `from`, by hour from 6:00
+ * to 19:00. Each hour is the average of the snapshots taken on the same weekday and hour in the 4 weeks before `from`.
+ */
+export async function weekPredictions(from?: string, level?: string, now = new Date()) {
+  const start = from ?? bogotaDate(now);
+  if (!isValidIsoDate(start)) throw new Error('INVALID_DATE');
+  const codes = await levelCodes(level);
+  const end = new Date(Math.min(bogotaMidnight(start).getTime(), now.getTime()));
+  const { rows } = await db().query<{ level_code: string; weekday: number; hour: number; occupancy: number | null }>(
+    `SELECT level_code, extract(dow FROM ${local})::int AS weekday, extract(hour FROM ${local})::int AS hour,
+            avg((occupied + reserved)::float8 / nullif(total, 0)) AS occupancy
+       FROM occupancy_snapshots
+      WHERE taken_at >= $1 AND taken_at < $2 AND extract(hour FROM ${local}) BETWEEN $3 AND $4
+        AND ($5::text IS NULL OR level_code = $5)
+      GROUP BY 1, 2, 3`,
+    [new Date(end.getTime() - HISTORY_DAYS * DAY_MS), end, WEEK_HOURS[0], WEEK_HOURS.at(-1), level ?? null]
+  );
+  const averages = new Map<string, number>();
+  for (const row of rows) if (row.occupancy !== null) averages.set(`${row.level_code}|${row.weekday}|${row.hour}`, row.occupancy);
+  const days = Array.from({ length: WEEK_DAYS }, (_, index) => {
+    const date = bogotaDate(new Date(bogotaMidnight(start).getTime() + index * DAY_MS));
+    return { date, weekday: weekdayOfIsoDate(date) };
+  });
+  return {
+    from: start,
+    hours: WEEK_HOURS,
+    levels: codes.map(code => ({
+      code,
+      days: days.map(day => ({
+        ...day,
+        occupancy: WEEK_HOURS.map(hour => {
+          const value = averages.get(`${code}|${day.weekday}|${hour}`);
+          return value === undefined ? null : round3(value);
+        })
+      }))
     }))
   };
 }

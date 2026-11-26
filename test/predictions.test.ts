@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, test } from 'node:test';
 import { db } from '../src/db.js';
-import { DAY_MS, slotLabel, slotStart } from '../src/time.js';
+import { bogotaDate, DAY_MS, slotLabel, slotStart } from '../src/time.js';
 import { client, createUser, setupTestDb, startServer } from './helpers.js';
 
 let cleanup: () => Promise<void>;
@@ -60,6 +60,42 @@ test('predictions validate inputs and default to today', async () => {
   assert.equal((await api('GET', '/api/v1/predictions?level=P9')).status, 404);
   const today = await api('GET', '/api/v1/predictions');
   assert.match(today.body.date, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('week predictions average the same weekday and hour of the last four weeks', async () => {
+  await snapshot('P1', '2026-09-23T10:00:00-05:00', 0.5);
+  await snapshot('P1', '2026-09-16T10:20:00-05:00', 0.6);
+  await snapshot('P1', '2026-09-23T19:30:00-05:00', 0.1);
+  await snapshot('P1', '2026-09-23T05:45:00-05:00', 0.9);
+  await snapshot('P1', '2026-08-26T10:00:00-05:00', 0);
+  await snapshot('P1', '2026-09-30T10:00:00-05:00', 1);
+  await snapshot('P2', '2026-09-27T08:00:00-05:00', 0.3, 48);
+  const response = await api('GET', '/api/v1/predictions/week?from=2026-09-30');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.from, '2026-09-30');
+  assert.deepEqual(response.body.hours, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+  assert.deepEqual(response.body.levels.map((level: { code: string }) => level.code), ['P1', 'P2', 'P3']);
+  const [p1, p2, p3] = response.body.levels;
+  assert.deepEqual(p1.days.map((day: { date: string; weekday: number }) => [day.date, day.weekday]), [
+    ['2026-09-30', 3], ['2026-10-01', 4], ['2026-10-02', 5], ['2026-10-03', 6], ['2026-10-04', 0], ['2026-10-05', 1], ['2026-10-06', 2]
+  ]);
+  assert.deepEqual(p1.days[0].occupancy, [null, null, null, null, 0.55, null, null, null, null, null, null, null, null, 0.1]);
+  assert.ok(p1.days.slice(1).every((day: { occupancy: (number | null)[] }) => day.occupancy.every(value => value === null)));
+  assert.equal(p2.days[4].occupancy[2], 0.292);
+  assert.ok(p3.days.every((day: { occupancy: (number | null)[] }) => day.occupancy.length === 14 && day.occupancy.every(value => value === null)));
+  const filtered = await api('GET', '/api/v1/predictions/week?from=2026-09-30&level=P2');
+  assert.deepEqual(filtered.body.levels.map((level: { code: string }) => level.code), ['P2']);
+});
+
+test('week predictions validate inputs and start today', async () => {
+  assert.equal((await api('GET', '/api/v1/predictions/week?from=2026-02-30')).status, 400);
+  assert.equal((await api('GET', '/api/v1/predictions/week?from=monday')).status, 400);
+  assert.equal((await api('GET', '/api/v1/predictions/week?level=P9')).status, 404);
+  const today = await api('GET', '/api/v1/predictions/week?level=P1');
+  assert.equal(today.status, 200);
+  assert.equal(today.body.from, bogotaDate(new Date()));
+  assert.equal(today.body.levels[0].days[0].date, today.body.from);
+  assert.equal(today.body.levels[0].days.length, 7);
 });
 
 test('level recommendation picks the lowest predicted occupancy', async () => {

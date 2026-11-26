@@ -34,7 +34,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime', 'weekPlan']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -496,6 +496,76 @@ test('search modality BQ13 is empty without searches', async () => {
       { mode: 'voice', searches: 0, selected: 0, selectionRate: null, noResults: 0 },
       { mode: 'text', searches: 0, selected: 0, selectionRate: null, noResults: 0 }
     ],
+    byPlatform: []
+  });
+});
+
+test('week plan BQ14 finds the best slot of each level near the usual arrival hour', async () => {
+  const driver = await createUser();
+  const midnight = bogotaMidnight(bogotaDate(new Date())).getTime();
+  const weekdayIn = (days: number) => bogotaParts(new Date(midnight + days * DAY_MS)).weekday;
+  const later = (days: number) => bogotaDate(new Date(midnight + days * DAY_MS));
+  const sameWeekdayBefore = (days: number, hour: number) => new Date(midnight + (days - 7) * DAY_MS + hour * 3_600_000);
+  const [first, second] = [1, 2, 3, 4, 5, 6].filter(days => weekdayIn(days) >= 1 && weekdayIn(days) <= 5);
+  const sunday = [0, 1, 2, 3, 4, 5, 6].find(days => weekdayIn(days) === 0)!;
+  const snapshots: [string, Date, number, number][] = [
+    ['P1', sameWeekdayBefore(first, 8), 54, 60],
+    ['P1', sameWeekdayBefore(first, 9), 42, 60],
+    ['P1', sameWeekdayBefore(second, 7), 30, 60],
+    ['P1', sameWeekdayBefore(second, 17), 6, 60],
+    ['P1', sameWeekdayBefore(sunday, 8), 3, 60],
+    ['P2', sameWeekdayBefore(first, 8), 19, 48]
+  ];
+  for (const [level, takenAt, busy, total] of snapshots) {
+    await db().query(
+      `INSERT INTO occupancy_snapshots (level_code, taken_at, total, free, reserved, occupied, source) VALUES ($1, $2, $3, $4, 0, $5, 'sim')`,
+      [level, takenAt, total, total - busy, busy]
+    );
+  }
+  for (const response of [
+    await track('week_viewed', { level: 'P1', arrivalHour: 8, offline: false, platform: 'android' }, driver.token),
+    await track('week_viewed', { level: 'P2', arrivalHour: 8, offline: true, platform: 'android' }, driver.token),
+    await track('week_viewed', { level: 'P1', arrivalHour: 17, offline: false, platform: 'ios' }, driver.token),
+    await track('week_viewed', { arrivalHour: 'eight', platform: 'android' }, driver.token),
+    await track('week_slot_used', { day: later(first), hour: 8, level: 'P2', predicted: 40, platform: 'android' }, driver.token)
+  ]) assert.equal(response.status, 202);
+  await db().query(
+    `INSERT INTO telemetry_events (name, properties, created_at)
+     VALUES ('week_viewed', '{"level": "P3", "arrivalHour": 12, "platform": "android"}', now() - interval '40 days')`
+  );
+
+  assert.deepEqual((await summary()).weekPlan, {
+    windowDays: 28,
+    from: later(0),
+    views: 4,
+    slotsUsed: 1,
+    useRate: 0.25,
+    usualArrivalHour: 8,
+    nearHours: 1,
+    arrivalHours: [{ hour: 8, views: 2 }, { hour: 17, views: 1 }],
+    byLevel: [
+      { level: 'P1', best: { date: later(second), weekday: weekdayIn(second), hour: 7, occupancy: 0.5 }, views: 2, slotsUsed: 0 },
+      { level: 'P2', best: { date: later(first), weekday: weekdayIn(first), hour: 8, occupancy: 0.396 }, views: 1, slotsUsed: 1 },
+      { level: 'P3', best: null, views: 0, slotsUsed: 0 }
+    ],
+    byPlatform: [
+      { platform: 'android', views: 3, slotsUsed: 1 },
+      { platform: 'ios', views: 1, slotsUsed: 0 }
+    ]
+  });
+});
+
+test('week plan BQ14 is empty without history or views', async () => {
+  assert.deepEqual((await summary()).weekPlan, {
+    windowDays: 28,
+    from: bogotaDate(new Date()),
+    views: 0,
+    slotsUsed: 0,
+    useRate: null,
+    usualArrivalHour: null,
+    nearHours: 1,
+    arrivalHours: [],
+    byLevel: ['P1', 'P2', 'P3'].map(level => ({ level, best: null, views: 0, slotsUsed: 0 })),
     byPlatform: []
   });
 });
