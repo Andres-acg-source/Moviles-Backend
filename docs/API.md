@@ -174,6 +174,7 @@ JWT: Optional.
 | `zone` | Optional. The user's rounded location as `lat,lng` with 2 decimals, for example `4.60,-74.07`. When the campus is full and the request has a valid token, the backend records one unmet-demand entry per user and 15-minute slot (BQ4) |
 
 `total` is the usable capacity and equals `free + reserved + occupied`. `disabled` counts spots that remain in the physical map but cannot be used; physical inventory equals `total + disabled`. `campusFull` is `true` when no level has a `free` spot.
+`imageUrl` is the photo of the level entrance, saved as `public/images/levels/{code}.jpg` (also `.jpeg`, `.png` or `.webp`), or `null` when there is no photo.
 
 ```http
 GET /api/v1/levels?zone=4.60,-74.07
@@ -186,9 +187,9 @@ Authorization: Bearer eyJhbGciOi...
   "generatedAt": "2026-10-02T04:35:41.070Z",
   "campusFull": false,
   "levels": [
-    { "code": "P1", "name": "Level P1", "underground": false, "total": 60, "free": 52, "reserved": 0, "occupied": 8, "disabled": 0 },
-    { "code": "P2", "name": "Level P2", "underground": true, "total": 48, "free": 43, "reserved": 0, "occupied": 5, "disabled": 0 },
-    { "code": "P3", "name": "Level P3", "underground": true, "total": 48, "free": 45, "reserved": 0, "occupied": 3, "disabled": 0 }
+    { "code": "P1", "name": "Level P1", "underground": false, "total": 60, "free": 52, "reserved": 0, "occupied": 8, "disabled": 0, "imageUrl": "/images/levels/P1.jpg" },
+    { "code": "P2", "name": "Level P2", "underground": true, "total": 48, "free": 43, "reserved": 0, "occupied": 5, "disabled": 0, "imageUrl": "/images/levels/P2.jpg" },
+    { "code": "P3", "name": "Level P3", "underground": true, "total": 48, "free": 45, "reserved": 0, "occupied": 3, "disabled": 0, "imageUrl": null }
   ]
 }
 ```
@@ -322,7 +323,7 @@ JWT: No. Returns off-campus alternatives. There is no live availability for them
 
 ### GET /images/{file}
 
-JWT: No. Serves the photos of the nearby lots from `public/images/` and the photos of the buildings from `public/images/buildings/`. A lot or a building gets a photo when a file named with its id is there, for example `nearby-1.jpg` or `buildings/sd.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
+JWT: No. Serves the photos of the nearby lots from `public/images/`, the photos of the buildings from `public/images/buildings/` and the photos of the level entrances from `public/images/levels/`. A lot, a building or a level gets a photo when a file named with its id or code is there, for example `nearby-1.jpg`, `buildings/sd.jpg` or `levels/P1.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
 
 ## Reports
 

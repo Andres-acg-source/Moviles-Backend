@@ -21,3 +21,5 @@ async function imagePaths(dir: string, urlPrefix: string) {
 export const lotImagePaths = (dir = IMAGES_DIR) => imagePaths(dir, '/images');
 
 export const buildingImagePaths = (dir = IMAGES_DIR) => imagePaths(join(dir, 'buildings'), '/images/buildings');
+
+export const levelImagePaths = (dir = IMAGES_DIR) => imagePaths(join(dir, 'levels'), '/images/levels');
