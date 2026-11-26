@@ -786,6 +786,46 @@ function renderBq13(container, data) {
 }
 
 const hourLabel = hour => `${String(Math.min(23, Math.max(0, hour))).padStart(2, '0')}:00`;
+const weekSlot = best => `${SHORT_DAYS[best.weekday]} ${hourLabel(best.hour)}`;
+
+function renderBq14(container, data) {
+  const planned = data.byLevel.filter(row => row.best);
+  if (!planned.length && !data.views) {
+    empty(container, `No occupancy history for the coming week and no visits to Plan your week in the last ${data.windowDays} days.`);
+    return;
+  }
+  const [winner] = [...planned].sort((a, b) => a.best.occupancy - b.best.occupancy);
+  const usual = data.usualArrivalHour;
+  const range = usual === null ? 'any hour, no arrival time set yet' : `${hourLabel(usual - data.nearHours)} to ${hourLabel(usual + data.nearHours)}`;
+  stats(container, [
+    { label: 'Usual arrival', value: usual === null ? '–' : hourLabel(usual), note: `most set in Plan your week, last ${data.windowDays} days` },
+    { label: 'Best slot this week', value: winner ? `${winner.level} · ${weekSlot(winner.best)}` : '–', note: winner ? `${fmtPct(winner.best.occupancy)} predicted, ${range}` : 'no occupancy history yet' },
+    { label: 'Views that used a time', value: fmtPct(data.useRate), note: `${fmtInt(data.slotsUsed)} of ${fmtInt(data.views)} views` }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  hbars(block(split, `Lowest predicted occupancy, Mon to Fri, ${range}`), data.byLevel.map(row => ({
+    label: row.best ? `${row.level} · ${weekSlot(row.best)}` : `${row.level} · no history`,
+    value: row.best?.occupancy ?? null,
+    color: levelColor(row.level),
+    note: row.best ? `${WEEKDAYS[row.best.weekday]} ${row.best.date}` : undefined
+  })), { format: value => fmtPct(value), max: 1, valueLabel: 'predicted occupancy' });
+  const arrivals = block(split, 'Arrival time set in Plan your week');
+  if (data.arrivalHours.length) {
+    hbars(arrivals, data.arrivalHours.map(item => ({ label: hourLabel(item.hour), value: item.views })), { valueLabel: 'views' });
+  } else {
+    empty(arrivals, 'Nobody opened Plan your week yet.');
+  }
+  tableView(container, ['Level', 'Best day', 'Hour', 'Predicted', 'Views', 'Used a time'],
+    data.byLevel.map(row => [
+      row.level,
+      row.best ? `${WEEKDAYS[row.best.weekday]} ${row.best.date}` : '–',
+      row.best ? hourLabel(row.best.hour) : '–',
+      fmtPct(row.best?.occupancy),
+      fmtInt(row.views),
+      fmtInt(row.slotsUsed)
+    ]), [3, 4, 5]);
+}
 
 function renderBq15(container, data) {
   if (!data.reports) {
@@ -825,6 +865,7 @@ function renderBq15(container, data) {
 
 const SECTIONS = [
   ['bq13', summary => summary.searchModality, renderBq13],
+  ['bq14', summary => summary.weekPlan, renderBq14],
   ['bq15', summary => summary.reportMismatch, renderBq15],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],

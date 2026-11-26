@@ -19,7 +19,7 @@ export function catalogRoutes(imagesDir?: string) {
   router.get('/buildings', asyncRoute(async (_req, res) => res.json(await buildings(imagesDir))));
 
   router.get('/levels', optionalAuth, asyncRoute(async (req, res) => {
-    const summary = await levelSummary();
+    const summary = await levelSummary(imagesDir);
     await recordAvailabilityQuery(req, summary.campusFull);
     res.json(summary);
   }));

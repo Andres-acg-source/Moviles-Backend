@@ -174,6 +174,7 @@ JWT: Optional.
 | `zone` | Optional. The user's rounded location as `lat,lng` with 2 decimals, for example `4.60,-74.07`. When the campus is full and the request has a valid token, the backend records one unmet-demand entry per user and 15-minute slot (BQ4) |
 
 `total` is the usable capacity and equals `free + reserved + occupied`. `disabled` counts spots that remain in the physical map but cannot be used; physical inventory equals `total + disabled`. `campusFull` is `true` when no level has a `free` spot.
+`imageUrl` is the photo of the level entrance, saved as `public/images/levels/{code}.jpg` (also `.jpeg`, `.png` or `.webp`), or `null` when there is no photo.
 
 ```http
 GET /api/v1/levels?zone=4.60,-74.07
@@ -186,9 +187,9 @@ Authorization: Bearer eyJhbGciOi...
   "generatedAt": "2026-10-02T04:35:41.070Z",
   "campusFull": false,
   "levels": [
-    { "code": "P1", "name": "Level P1", "underground": false, "total": 60, "free": 52, "reserved": 0, "occupied": 8, "disabled": 0 },
-    { "code": "P2", "name": "Level P2", "underground": true, "total": 48, "free": 43, "reserved": 0, "occupied": 5, "disabled": 0 },
-    { "code": "P3", "name": "Level P3", "underground": true, "total": 48, "free": 45, "reserved": 0, "occupied": 3, "disabled": 0 }
+    { "code": "P1", "name": "Level P1", "underground": false, "total": 60, "free": 52, "reserved": 0, "occupied": 8, "disabled": 0, "imageUrl": "/images/levels/P1.jpg" },
+    { "code": "P2", "name": "Level P2", "underground": true, "total": 48, "free": 43, "reserved": 0, "occupied": 5, "disabled": 0, "imageUrl": "/images/levels/P2.jpg" },
+    { "code": "P3", "name": "Level P3", "underground": true, "total": 48, "free": 45, "reserved": 0, "occupied": 3, "disabled": 0, "imageUrl": null }
   ]
 }
 ```
@@ -322,7 +323,7 @@ JWT: No. Returns off-campus alternatives. There is no live availability for them
 
 ### GET /images/{file}
 
-JWT: No. Serves the photos of the nearby lots from `public/images/` and the photos of the buildings from `public/images/buildings/`. A lot or a building gets a photo when a file named with its id is there, for example `nearby-1.jpg` or `buildings/sd.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
+JWT: No. Serves the photos of the nearby lots from `public/images/`, the photos of the buildings from `public/images/buildings/` and the photos of the level entrances from `public/images/levels/`. A lot, a building or a level gets a photo when a file named with its id or code is there, for example `nearby-1.jpg`, `buildings/sd.jpg` or `levels/P1.jpg` (`.jpg`, `.jpeg`, `.png` or `.webp`). Responses have `Cache-Control: max-age=2592000` (30 days), the same time the apps keep a photo. Other files and missing photos return 404.
 
 ## Reports
 
@@ -394,6 +395,42 @@ GET /api/v1/predictions?date=2026-10-05&level=P1
   "intervalMinutes": 15,
   "levels": [
     { "code": "P1", "points": [ { "slot": "00:00", "occupancy": 0.1 }, { "slot": "00:15", "occupancy": 0.083 }, "…", { "slot": "10:00", "occupancy": 0.95 }, "…", { "slot": "23:45", "occupancy": 0.1 } ] }
+  ]
+}
+```
+
+Errors: 400 `Invalid date, expected YYYY-MM-DD`, 404 `Level not found`.
+
+### GET /api/v1/predictions/week?level=&from=
+
+JWT: No. The data of Plan your week (BQ14).
+
+| Query | Description |
+|---|---|
+| `from` | `YYYY-MM-DD`, first of the 7 days. Default: today in Bogotá |
+| `level` | Optional level code |
+
+`hours` are the hours from 6:00 to 19:00, and each day has one `occupancy` per hour in the same order. It is the average of `(occupied + reserved) / total` over the snapshots taken on the same weekday and hour during the 4 weeks before `from`, as a fraction from 0 to 1, or `null` when there is no data. `weekday` goes from 0 (Sunday) to 6.
+
+```http
+GET /api/v1/predictions/week?level=P2
+```
+
+```json
+200
+{
+  "from": "2026-11-24",
+  "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+  "levels": [
+    {
+      "code": "P2",
+      "days": [
+        { "date": "2026-11-24", "weekday": 2, "occupancy": [0.21, 0.48, 0.83, 0.92, 0.95, 0.9, 0.78, 0.74, 0.8, 0.77, 0.6, 0.42, 0.3, 0.18] },
+        "…",
+        { "date": "2026-11-29", "weekday": 0, "occupancy": [null, null, 0.05, 0.08, 0.1, 0.12, 0.1, 0.09, 0.07, 0.06, 0.05, null, null, null] },
+        "…"
+      ]
+    }
   ]
 }
 ```
@@ -573,6 +610,7 @@ Section notes:
 | `predictionAccuracy` (BQ10) | Last 7 days. Each occupancy snapshot is compared with the prediction for its level, weekday and 15-minute slot, built like `/predictions`: the average occupancy of the same weekday and slot in the 28 days before the snapshot's Bogotá day. `byLevel` only counts snapshots that have that history; `meanAbsError` is the average of `|real − predicted|` and `overall.meanAbsError` is `null` without samples. `forecastViews` counts `forecast_viewed` events of the last 7 days by `platform` |
 | `reservationFlow` (BQ11) | All time, grouped by `deviceModel` + `osVersion`. `medianMs` and `p90Ms` use `percentile_cont` over `reservation_request.durationMs`; `failureRate` is the share of requests with `success: false` and `errors` counts them by `errorType`. Only `app_crash` events with `inReservationFlow: true` are counted, and `crashesPer100Opens = crashes ÷ reserve_opened × 100`. Rates are `null` when the denominator is 0 |
 | `searchModality` (BQ13) | Last 28 days, by event occurrence time. A search is one `searchId` of `spot_search` with `mode` `voice` or `text`, counted once even if it was sent twice. It ended in a chosen spot when any `spot_selected` has the same `searchId`. `voiceShare = voice ÷ searches`, `selectionRate = selected ÷ searches` per mode, `voiceAttempts = voice searches + keyboardFallbacks` and `fallbackRate = keyboardFallbacks ÷ voiceAttempts`. `higherSelectionMode` is `null` when a mode has no searches or both rates are equal |
+| `weekPlan` (BQ14) | `views` and `slotsUsed` count the `week_viewed` and `week_slot_used` events of the last 28 days, by event occurrence time, and `useRate = slotsUsed ÷ views`. `usualArrivalHour` is the `arrivalHour` most often set in Plan your week (the earliest one on a tie), or `null` without views. For each level, `best` is the hour with the lowest predicted occupancy in the 7 days of `/predictions/week` that start today, from Monday to Friday, within `nearHours` of `usualArrivalHour` (any hour when it is `null`) and leaving out the hours of today that already started, as Plan your week does; it is `null` without history. `byPlatform` splits `views` and `slotsUsed` by `platform` |
 | `reportMismatch` (BQ15) | Reports of the last 28 days by `reportedAt`, grouped by level and hour in Bogotá time. A report contradicts the app when `shownStatus` was `free` and `kind` is `occupied` or `blocked`. `mismatchRate = contradicting ÷ reports`, overall, per level (`byLevel`, every level even without reports) and per level and hour (`bySlot`). `worstSlot` is the level and hour with the most contradicting reports (the higher rate on a tie), or `null` when no report contradicts the app |
 
 `reservationPolicy` fields:

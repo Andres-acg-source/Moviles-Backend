@@ -70,6 +70,33 @@ test('buildings link the photo saved for each building', async () => {
   }
 });
 
+test('levels link the photo saved for each level entrance', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'parkwise-images-'));
+  await mkdir(join(dir, 'levels'));
+  await writeFile(join(dir, 'levels', 'P1.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  await writeFile(join(dir, 'levels', 'P3.webp'), Buffer.from([0x52, 0x49, 0x46, 0x46]));
+  await writeFile(join(dir, 'levels', 'P2.txt'), 'not a photo');
+  await writeFile(join(dir, 'P2.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  const photos = await startServer({ imagesDir: dir });
+  try {
+    const call = client(photos.base);
+    const levels = await call('GET', '/api/v1/levels');
+    assert.deepEqual(levels.body.levels.map((level: { code: string; imageUrl: string | null }) => [level.code, level.imageUrl]), [
+      ['P1', '/images/levels/P1.jpg'],
+      ['P2', null],
+      ['P3', '/images/levels/P3.webp']
+    ]);
+    const photo = await fetch(`${photos.base}/images/levels/P1.jpg`);
+    assert.equal(photo.status, 200);
+    assert.equal(photo.headers.get('content-type'), 'image/jpeg');
+    assert.match(photo.headers.get('cache-control') ?? '', /max-age=2592000/);
+    assert.equal((await fetch(`${photos.base}/images/levels/P2.txt`)).status, 404);
+  } finally {
+    await photos.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('level counts report unavailable spots separately from usable capacity', async () => {
   await setSpots(['P1-A-01', 'P1-A-02', 'P1-A-03', 'P1-A-04', 'P1-A-05'], 'reserved');
   await setSpots(['P1-B-01', 'P1-B-02', 'P1-B-03'], 'occupied');
@@ -78,7 +105,7 @@ test('level counts report unavailable spots separately from usable capacity', as
   assert.equal(response.status, 200);
   assert.equal(response.body.campusFull, false);
   assert.ok(Date.parse(response.body.generatedAt));
-  const levels = response.body.levels.map(({ name, ...level }: { name: string }) => level);
+  const levels = response.body.levels.map(({ name, imageUrl, ...level }: { name: string; imageUrl: string | null }) => level);
   assert.deepEqual(levels, [
     { code: 'P1', underground: false, total: 60, free: 52, reserved: 5, occupied: 3, disabled: 0 },
     { code: 'P2', underground: true, total: 47, free: 47, reserved: 0, occupied: 0, disabled: 1 },
