@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
@@ -19,7 +19,7 @@ beforeEach(async () => { await setAllSpots('free'); });
 
 test('buildings and nearby lots', async () => {
   const buildings = await api('GET', '/api/v1/buildings');
-  assert.deepEqual(buildings.body, [{ id: 'sd', name: 'Edificio Santo Domingo' }]);
+  assert.deepEqual(buildings.body.map(({ imageUrl, ...building }: { imageUrl: string | null }) => building), [{ id: 'sd', name: 'Edificio Santo Domingo' }]);
   const nearby = await api('GET', '/api/v1/nearby-lots');
   assert.deepEqual(nearby.body.map((lot: { id: string }) => lot.id), ['nearby-1', 'nearby-2']);
   assert.deepEqual(Object.keys(nearby.body[0]).sort(), ['address', 'currency', 'id', 'imageUrl', 'name', 'ratePerHour', 'walkMinutes']);
@@ -43,6 +43,27 @@ test('nearby lots link the photo saved for each lot', async () => {
     assert.match(photo.headers.get('cache-control') ?? '', /max-age=2592000/);
     assert.equal((await fetch(`${photos.base}/images/nearby-2.jpg`)).status, 404);
     assert.equal((await fetch(`${photos.base}/images/notes.txt`)).status, 404);
+  } finally {
+    await photos.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('buildings link the photo saved for each building', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'parkwise-images-'));
+  await mkdir(join(dir, 'buildings'));
+  await writeFile(join(dir, 'buildings', 'sd.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  await writeFile(join(dir, 'sd.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const photos = await startServer({ imagesDir: dir });
+  try {
+    const call = client(photos.base);
+    const buildings = await call('GET', '/api/v1/buildings');
+    assert.deepEqual(buildings.body, [{ id: 'sd', name: 'Edificio Santo Domingo', imageUrl: '/images/buildings/sd.jpg' }]);
+    const photo = await fetch(`${photos.base}/images/buildings/sd.jpg`);
+    assert.equal(photo.status, 200);
+    assert.equal(photo.headers.get('content-type'), 'image/jpeg');
+    const lots = await call('GET', '/api/v1/nearby-lots');
+    assert.ok(lots.body.every((lot: { imageUrl: string | null }) => lot.imageUrl === null));
   } finally {
     await photos.close();
     await rm(dir, { recursive: true, force: true });
