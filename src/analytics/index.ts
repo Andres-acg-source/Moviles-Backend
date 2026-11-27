@@ -14,14 +14,15 @@ import { reservations } from './reservations.js';
 import { searchModality } from './search-modality.js';
 import { specialAvailability } from './special-availability.js';
 import { unmetDemand } from './unmet-demand.js';
+import { voiceRecognition } from './voice-recognition.js';
 import { walkingTime } from './walking-time.js';
 import { weekPlan } from './week-plan.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, voice] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
     leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability(), reservationFlow(),
-    searchModality(), weekPlan(), reportMismatch()
+    searchModality(), weekPlan(), reportMismatch(), voiceRecognition()
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -42,6 +43,7 @@ export async function analyticsSummary() {
     reservationFlow: flow,
     searchModality: search,
     weekPlan: week,
-    reportMismatch: reports
+    reportMismatch: reports,
+    voiceRecognition: voice
   };
 }

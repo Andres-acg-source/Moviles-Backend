@@ -34,7 +34,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime', 'weekPlan']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'voiceRecognition', 'walkingTime', 'weekPlan']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -618,5 +618,63 @@ test('report mismatch BQ15 is empty without reports', async () => {
     worstSlot: null,
     byLevel: ['P1', 'P2', 'P3'].map(level => ({ level, reports: 0, contradicting: 0, mismatchRate: null })),
     bySlot: []
+  });
+});
+
+test('voice recognition BQ16 times the attempts that worked and counts the failures by cause, device and level', async () => {
+  const driver = await createUser();
+  const iphone = { platform: 'ios', deviceModel: 'iPhone15,2', osVersion: '18.1' };
+  const attempt = (properties: Record<string, unknown>) => track('voice_recognition', properties, driver.token);
+
+  for (const response of [
+    await attempt({ ...iphone, outcome: 'ok', latencyMs: 1000, level: 'P2' }),
+    await attempt({ ...iphone, outcome: 'ok', latencyMs: 2000, level: 'P2' }),
+    await attempt({ ...iphone, outcome: 'ok', latencyMs: 3000 }),
+    await attempt({ platform: 'android', deviceModel: 'Pixel 7', osVersion: '14', outcome: 'ok', latencyMs: 4000 }),
+    await attempt({ ...iphone, outcome: 'offline', latencyMs: 300 })
+  ]) assert.equal(response.status, 202);
+  await db().query(
+    `INSERT INTO telemetry_events (name, properties, created_at)
+     VALUES ('voice_recognition', '{"outcome": "error", "latencyMs": 500, "platform": "ios"}', now() - interval '40 days')`
+  );
+
+  assert.deepEqual((await summary()).voiceRecognition, {
+    windowDays: 28,
+    attempts: 5,
+    failures: 1,
+    failureRate: 0.2,
+    medianMs: 2500,
+    p90Ms: 3700,
+    byOutcome: [
+      { outcome: 'ok', attempts: 4, share: 0.8 },
+      { outcome: 'offline', attempts: 1, share: 0.2 }
+    ],
+    byPlatform: [
+      { platform: 'android', attempts: 1, medianMs: 4000, p90Ms: 4000, failureRate: 0 },
+      { platform: 'ios', attempts: 4, medianMs: 2000, p90Ms: 2800, failureRate: 0.25 }
+    ],
+    byDevice: [
+      { platform: 'ios', deviceModel: 'iPhone15,2', osVersion: '18.1', attempts: 4, medianMs: 2000, p90Ms: 2800, failureRate: 0.25 },
+      { platform: 'android', deviceModel: 'Pixel 7', osVersion: '14', attempts: 1, medianMs: 4000, p90Ms: 4000, failureRate: 0 }
+    ],
+    byLevel: [
+      { level: 'P2', attempts: 2, failureRate: 0 },
+      { level: 'none', attempts: 3, failureRate: 0.333 }
+    ]
+  });
+});
+
+test('voice recognition BQ16 is empty without attempts', async () => {
+  assert.deepEqual((await summary()).voiceRecognition, {
+    windowDays: 28,
+    attempts: 0,
+    failures: 0,
+    failureRate: null,
+    medianMs: null,
+    p90Ms: null,
+    byOutcome: [],
+    byPlatform: [],
+    byDevice: [],
+    byLevel: []
   });
 });
