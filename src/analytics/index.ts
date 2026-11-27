@@ -1,4 +1,5 @@
 ﻿import { conversionFunnel } from './conversion-funnel.js';
+import { demandCapacity } from './demand-capacity.js';
 import { eventCounts } from './event-counts.js';
 import { filterUsage } from './filter-usage.js';
 import { leadTimeOverview } from './lead-time-overview.js';
@@ -18,10 +19,10 @@ import { walkingTime } from './walking-time.js';
 import { weekPlan } from './week-plan.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, demand] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
     leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability(), reservationFlow(),
-    searchModality(), weekPlan(), reportMismatch()
+    searchModality(), weekPlan(), reportMismatch(), demandCapacity()
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -42,6 +43,7 @@ export async function analyticsSummary() {
     reservationFlow: flow,
     searchModality: search,
     weekPlan: week,
-    reportMismatch: reports
+    reportMismatch: reports,
+    demandCapacity: demand
   };
 }
