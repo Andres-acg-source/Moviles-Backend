@@ -128,3 +128,45 @@ test('reports are validated', async () => {
   assert.equal(large.status, 413);
   assert.equal((await db().query('SELECT 1 FROM spot_reports')).rowCount, 0);
 });
+
+test('reports save the platform and default to android', async () => {
+  const driver = await createUser();
+
+  const ios = await api('POST', '/api/v1/reports', {
+    token: driver.token,
+    body: report({ platform: 'ios' })
+  });
+
+  const android = await api('POST', '/api/v1/reports', {
+    token: driver.token,
+    body: report()
+  });
+
+  assert.equal(ios.status, 201);
+  assert.equal(android.status, 201);
+
+  const { rows } = await db().query(
+    'SELECT platform FROM spot_reports ORDER BY platform'
+  );
+
+  assert.deepEqual(rows, [
+    { platform: 'android' },
+    { platform: 'ios' }
+  ]);
+});
+
+test('reports reject an unsupported platform', async () => {
+  const driver = await createUser();
+
+  const response = await api('POST', '/api/v1/reports', {
+    token: driver.token,
+    body: report({ platform: 'windows' })
+  });
+
+  assert.equal(response.status, 400);
+
+  assert.equal(
+    (await db().query('SELECT 1 FROM spot_reports')).rowCount,
+    0
+  );
+});

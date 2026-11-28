@@ -342,6 +342,7 @@ JWT: Yes.
 | `note` | Optional, up to 280 characters. Blank notes are saved as `null` |
 | `reportedAt` | Optional ISO time when the driver made the report. Times in the future become now, and times older than 7 days become 7 days ago. Default: now |
 | `photo` | Optional JPEG in base64, already compressed on the phone, up to 300 KB |
+| `platform` | `android` or `ios`. Defaults to `android` for backward compatibility. The iOS client must send `ios`. Used by BQ18 |
 
 The photo is saved in PostgreSQL because the disk of the Render free plan is erased on every deploy.
 
@@ -612,6 +613,7 @@ Section notes:
 | `searchModality` (BQ13) | Last 28 days, by event occurrence time. A search is one `searchId` of `spot_search` with `mode` `voice` or `text`, counted once even if it was sent twice. It ended in a chosen spot when any `spot_selected` has the same `searchId`. `voiceShare = voice ÷ searches`, `selectionRate = selected ÷ searches` per mode, `voiceAttempts = voice searches + keyboardFallbacks` and `fallbackRate = keyboardFallbacks ÷ voiceAttempts`. `higherSelectionMode` is `null` when a mode has no searches or both rates are equal |
 | `weekPlan` (BQ14) | `views` and `slotsUsed` count the `week_viewed` and `week_slot_used` events of the last 28 days, by event occurrence time, and `useRate = slotsUsed ÷ views`. `usualArrivalHour` is the `arrivalHour` most often set in Plan your week (the earliest one on a tie), or `null` without views. For each level, `best` is the hour with the lowest predicted occupancy in the 7 days of `/predictions/week` that start today, from Monday to Friday, within `nearHours` of `usualArrivalHour` (any hour when it is `null`) and leaving out the hours of today that already started, as Plan your week does; it is `null` without history. `byPlatform` splits `views` and `slotsUsed` by `platform` |
 | `reportMismatch` (BQ15) | Reports of the last 28 days by `reportedAt`, grouped by level and hour in Bogotá time. A report contradicts the app when `shownStatus` was `free` and `kind` is `occupied` or `blocked`. `mismatchRate = contradicting ÷ reports`, overall, per level (`byLevel`, every level even without reports) and per level and hour (`bySlot`). `worstSlot` is the level and hour with the most contradicting reports (the higher rate on a tie), or `null` when no report contradicts the app |
+| `reportTypes` (BQ18) | Reports of the last 28 days by `reportedAt`. Counts reports, reports with a photo and reports with a note, overall, by problem type (`byKind`) and platform (`byPlatform`). `photoShare = withPhoto / reports` and `noteShare = withNote / reports`. `byKind` includes all four problem types even without reports. `mostReported` is the most frequent problem type, or `null` without reports. Shares are `null` when the denominator is zero. No user identifiers, photos or note contents are exposed |
 
 `reservationPolicy` fields:
 

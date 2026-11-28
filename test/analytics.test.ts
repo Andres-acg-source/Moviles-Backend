@@ -34,7 +34,7 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime', 'weekPlan']);
+  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reportTypes', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime', 'weekPlan']);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -618,5 +618,128 @@ test('report mismatch BQ15 is empty without reports', async () => {
     worstSlot: null,
     byLevel: ['P1', 'P2', 'P3'].map(level => ({ level, reports: 0, contradicting: 0, mismatchRate: null })),
     bySlot: []
+  });
+});
+
+test('report types BQ18 counts reports, photos and notes by kind and platform', async () => {
+  const driver = await createUser();
+
+  const reports = [
+    ['occupied', 'android', true, true, -1],
+    ['occupied', 'android', false, false, -2],
+    ['occupied', 'ios', true, false, -3],
+    ['blocked', 'ios', false, true, -4],
+    ['damaged', 'android', true, true, -40],
+    ['other', 'ios', true, true, 2]
+  ] as const;
+
+  for (const [kind, platform, photo, note, days] of reports) {
+    await db().query(
+      `INSERT INTO spot_reports (
+         user_id, client_id, spot_id, level_code,
+         kind, shown_status, platform, photo, note, reported_at
+       )
+       VALUES (
+         $1, gen_random_uuid(), 'P2-A-14', 'P2',
+         $2, 'free', $3, $4, $5,
+         now() + make_interval(days => $6::int)
+       )`,
+      [
+        driver.id,
+        kind,
+        platform,
+        photo ? Buffer.from([0xff, 0xd8, 0xff, 0xd9]) : null,
+        note ? 'A parking spot problem' : null,
+        days
+      ]
+    );
+  }
+
+  const body = (await summary()).reportTypes;
+
+  assert.deepEqual(body, {
+    windowDays: 28,
+    reports: 4,
+    withPhoto: 2,
+    photoShare: 0.5,
+    withNote: 2,
+    noteShare: 0.5,
+    byKind: [
+      {
+        kind: 'occupied',
+        reports: 3,
+        share: 0.75,
+        withPhoto: 2,
+        photoShare: 0.667,
+        withNote: 1,
+        noteShare: 0.333
+      },
+      {
+        kind: 'blocked',
+        reports: 1,
+        share: 0.25,
+        withPhoto: 0,
+        photoShare: 0,
+        withNote: 1,
+        noteShare: 1
+      },
+      {
+        kind: 'damaged',
+        reports: 0,
+        share: 0,
+        withPhoto: 0,
+        photoShare: null,
+        withNote: 0,
+        noteShare: null
+      },
+      {
+        kind: 'other',
+        reports: 0,
+        share: 0,
+        withPhoto: 0,
+        photoShare: null,
+        withNote: 0,
+        noteShare: null
+      }
+    ],
+    byPlatform: [
+      {
+        platform: 'android',
+        reports: 2,
+        photoShare: 0.5,
+        noteShare: 0.5
+      },
+      {
+        platform: 'ios',
+        reports: 2,
+        photoShare: 0.5,
+        noteShare: 0.5
+      }
+    ],
+    mostReported: 'occupied'
+  });
+});
+
+test('report types BQ18 returns empty counts and null rates without reports', async () => {
+  const body = (await summary()).reportTypes;
+
+  assert.deepEqual(body, {
+    windowDays: 28,
+    reports: 0,
+    withPhoto: 0,
+    photoShare: null,
+    withNote: 0,
+    noteShare: null,
+    byKind: ['occupied', 'blocked', 'damaged', 'other'].map(kind => ({
+      kind,
+      reports: 0,
+      share: null,
+      withPhoto: 0,
+      photoShare: null,
+      withNote: 0,
+      noteShare: null
+    })),
+    byPlatform: [],
+    mostReported: null
   });
 });

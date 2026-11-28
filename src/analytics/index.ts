@@ -8,6 +8,7 @@ import { predictionAccuracy } from './prediction-accuracy.js';
 import { predictionUsage } from './prediction-usage.js';
 import { redirectValue } from './redirect-value.js';
 import { reportMismatch } from './report-mismatch.js';
+import { reportTypes } from './report-types.js';
 import { reservationFlow } from './reservation-flow.js';
 import { reservationPolicy } from './reservation-policy.js';
 import { reservations } from './reservations.js';
@@ -18,10 +19,10 @@ import { walkingTime } from './walking-time.js';
 import { weekPlan } from './week-plan.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, types] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
     leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability(), reservationFlow(),
-    searchModality(), weekPlan(), reportMismatch()
+    searchModality(), weekPlan(), reportMismatch(), reportTypes()
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -42,6 +43,7 @@ export async function analyticsSummary() {
     reservationFlow: flow,
     searchModality: search,
     weekPlan: week,
-    reportMismatch: reports
+    reportMismatch: reports,
+    reportTypes: types
   };
 }
