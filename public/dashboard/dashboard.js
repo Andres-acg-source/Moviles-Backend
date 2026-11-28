@@ -861,6 +861,51 @@ function renderBq15(container, data) {
     data.bySlot.map(slot => [slot.level, hourLabel(slot.hour), fmtInt(slot.reports), fmtInt(slot.contradicting), fmtPct(slot.mismatchRate)]), [2, 3, 4]);
 }
 
+const VOICE_OUTCOMES = {
+  no_match: 'Heard nothing',
+  error: 'Recognizer error',
+  no_permission: 'No permission',
+  offline: 'No internet'
+};
+const voiceDevice = row => `${row.deviceModel} · ${row.platform === 'ios' ? 'iOS' : row.platform === 'android' ? 'Android' : row.platform} ${row.osVersion}`;
+
+function renderBq16(container, data) {
+  if (!data.attempts) {
+    empty(container, `No voice attempts in the last ${data.windowDays} days. They appear when a driver uses Voice search on Android or iOS.`);
+    return;
+  }
+  const worked = data.attempts - data.failures;
+  stats(container, [
+    { label: 'Recognition time', value: `${fmtMs(data.medianMs)} · ${fmtMs(data.p90Ms)}`, note: `Median and 90th percentile of the ${fmtInt(worked)} that worked` },
+    { label: 'Failed', value: fmtPct(data.failureRate), note: `${fmtInt(data.failures)} of ${fmtInt(data.attempts)} attempts` },
+    { label: 'Voice attempts', value: fmtInt(data.attempts), note: `last ${data.windowDays} days, Android and iOS` }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  const failures = data.byOutcome.filter(row => row.outcome !== 'ok');
+  const causes = block(split, 'Failures by cause');
+  if (failures.length) {
+    hbars(causes, failures.map(row => ({
+      label: VOICE_OUTCOMES[row.outcome] ?? row.outcome, value: row.attempts, note: `${fmtPct(row.share)} of the attempts`
+    })), { valueLabel: 'attempts' });
+  } else {
+    empty(causes, 'No attempt failed.');
+  }
+  const timed = data.byDevice.filter(row => row.medianMs !== null);
+  const times = block(split, 'Median recognition time by device');
+  if (timed.length) {
+    hbars(times, timed.map(row => ({
+      label: voiceDevice(row), value: row.medianMs, note: `p90 ${fmtMs(row.p90Ms)}, ${fmtInt(row.attempts)} attempts`
+    })), { format: value => fmtMs(value), valueLabel: 'median' });
+  } else {
+    empty(times, 'No recognition worked yet, so there is no time to show.');
+  }
+  tableView(container, ['Platform', 'Device', 'OS', 'Attempts', 'Median', 'p90', 'Failed'],
+    data.byDevice.map(row => [row.platform, row.deviceModel, row.osVersion, fmtInt(row.attempts), fmtMs(row.medianMs), fmtMs(row.p90Ms), fmtPct(row.failureRate)]), [3, 4, 5, 6]);
+  tableView(container, ['Level', 'Attempts', 'Failed'],
+    data.byLevel.map(row => [row.level === 'none' ? 'No open reservation' : row.level, fmtInt(row.attempts), fmtPct(row.failureRate)]), [1, 2]);
+}
+
 function renderBq17(container, data) {
   const slots = data.levels.flatMap(level => level.slots.map(slot => ({ ...slot, level: level.code, capacity: level.capacity })));
   if (!slots.length) {
@@ -906,6 +951,7 @@ const SECTIONS = [
   ['bq13', summary => summary.searchModality, renderBq13],
   ['bq14', summary => summary.weekPlan, renderBq14],
   ['bq15', summary => summary.reportMismatch, renderBq15],
+  ['bq16', summary => summary.voiceRecognition, renderBq16],
   ['bq17', summary => summary.demandCapacity, renderBq17],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
