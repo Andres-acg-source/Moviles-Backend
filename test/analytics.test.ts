@@ -34,7 +34,30 @@ const track = (name: string, properties: Record<string, unknown>, token?: string
 
 test('summary requires authentication and has every section', async () => {
   assert.equal((await api('GET', '/api/v1/analytics/summary')).status, 401);
-  assert.deepEqual(Object.keys(await summary()).sort(), ['conversionFunnel', 'eventCounts', 'filterUsage', 'generatedAt', 'leadTime', 'mapLoad', 'parking', 'predictionAccuracy', 'predictionUsage', 'redirectValue', 'reportMismatch', 'reportTypes', 'reservationFlow', 'reservationPolicy', 'reservations', 'searchModality', 'specialAvailability', 'unmetDemand', 'walkingTime', 'weekPlan']);
+  assert.deepEqual(Object.keys(await summary()).sort(), [
+    'conversionFunnel',
+    'demandCapacity',
+    'eventCounts',
+    'filterUsage',
+    'generatedAt',
+    'leadTime',
+    'mapLoad',
+    'parking',
+    'predictionAccuracy',
+    'predictionUsage',
+    'redirectValue',
+    'reportMismatch',
+    'reportTypes',
+    'reservationFlow',
+    'reservationPolicy',
+    'reservations',
+    'searchModality',
+    'specialAvailability',
+    'unmetDemand',
+    'voiceRecognition',
+    'walkingTime',
+    'weekPlan'
+  ]);
 });
 
 test('telemetry rejects invalid names and properties', async () => {
@@ -618,6 +641,116 @@ test('report mismatch BQ15 is empty without reports', async () => {
     worstSlot: null,
     byLevel: ['P1', 'P2', 'P3'].map(level => ({ level, reports: 0, contradicting: 0, mismatchRate: null })),
     bySlot: []
+  });
+});
+
+test('voice recognition BQ16 times the attempts that worked and counts the failures by cause, device and level', async () => {
+  const driver = await createUser();
+  const iphone = { platform: 'ios', deviceModel: 'iPhone15,2', osVersion: '18.1' };
+  const attempt = (properties: Record<string, unknown>) => track('voice_recognition', properties, driver.token);
+
+  for (const response of [
+    await attempt({ ...iphone, outcome: 'ok', latencyMs: 1000, level: 'P2' }),
+    await attempt({ ...iphone, outcome: 'ok', latencyMs: 2000, level: 'P2' }),
+    await attempt({ ...iphone, outcome: 'ok', latencyMs: 3000 }),
+    await attempt({ platform: 'android', deviceModel: 'Pixel 7', osVersion: '14', outcome: 'ok', latencyMs: 4000 }),
+    await attempt({ ...iphone, outcome: 'offline', latencyMs: 300 })
+  ]) assert.equal(response.status, 202);
+  await db().query(
+    `INSERT INTO telemetry_events (name, properties, created_at)
+     VALUES ('voice_recognition', '{"outcome": "error", "latencyMs": 500, "platform": "ios"}', now() - interval '40 days')`
+  );
+
+  assert.deepEqual((await summary()).voiceRecognition, {
+    windowDays: 28,
+    attempts: 5,
+    failures: 1,
+    failureRate: 0.2,
+    medianMs: 2500,
+    p90Ms: 3700,
+    byOutcome: [
+      { outcome: 'ok', attempts: 4, share: 0.8 },
+      { outcome: 'offline', attempts: 1, share: 0.2 }
+    ],
+    byPlatform: [
+      { platform: 'android', attempts: 1, medianMs: 4000, p90Ms: 4000, failureRate: 0 },
+      { platform: 'ios', attempts: 4, medianMs: 2000, p90Ms: 2800, failureRate: 0.25 }
+    ],
+    byDevice: [
+      { platform: 'ios', deviceModel: 'iPhone15,2', osVersion: '18.1', attempts: 4, medianMs: 2000, p90Ms: 2800, failureRate: 0.25 },
+      { platform: 'android', deviceModel: 'Pixel 7', osVersion: '14', attempts: 1, medianMs: 4000, p90Ms: 4000, failureRate: 0 }
+    ],
+    byLevel: [
+      { level: 'P2', attempts: 2, failureRate: 0 },
+      { level: 'none', attempts: 3, failureRate: 0.333 }
+    ]
+  });
+});
+
+test('voice recognition BQ16 is empty without attempts', async () => {
+  assert.deepEqual((await summary()).voiceRecognition, {
+    windowDays: 28,
+    attempts: 0,
+    failures: 0,
+    failureRate: null,
+    medianMs: null,
+    p90Ms: null,
+    byOutcome: [],
+    byPlatform: [],
+    byDevice: [],
+    byLevel: []
+  });
+});
+
+test('demand capacity BQ17 adds the unmet demand split by capacity to the hourly peak of each level', async () => {
+  const midnight = bogotaMidnight(bogotaDate(new Date())).getTime();
+  const at = (daysAgo: number, hour: number, minute = 0) => new Date(midnight - daysAgo * DAY_MS + hour * 3_600_000 + minute * 60_000);
+  const weekday = bogotaParts(new Date(midnight)).weekday;
+  const snapshots: [string, Date, number, number, number][] = [
+    ['P1', at(7, 8), 60, 50, 0],
+    ['P1', at(7, 8, 45), 60, 50, 8],
+    ['P1', at(14, 8, 15), 60, 54, 0],
+    ['P2', at(7, 8, 30), 48, 44, 4],
+    ['P2', at(14, 8), 48, 46, 0],
+    ['P1', at(7, 21), 60, 60, 0],
+    ['P2', at(40, 8), 48, 48, 0]
+  ];
+  for (const [level, takenAt, total, occupied, reserved] of snapshots) {
+    await db().query(
+      `INSERT INTO occupancy_snapshots (level_code, taken_at, total, free, reserved, occupied, source) VALUES ($1, $2, $3, $4, $5, $6, 'sim')`,
+      [level, takenAt, total, total - occupied - reserved, reserved, occupied]
+    );
+  }
+  const unmet = [at(7, 8), at(7, 8), at(7, 8, 15), at(7, 8, 30), at(7, 8, 45), at(7, 8, 45), at(14, 8), at(14, 8, 30), at(7, 10)];
+  for (const slot of unmet) {
+    await db().query(
+      `INSERT INTO unmet_demand (user_id, slot_start, weekday, zone) VALUES (gen_random_uuid(), $1, $2, '4.60,-74.07')`,
+      [slot, bogotaParts(slot).weekday]
+    );
+  }
+
+  assert.deepEqual((await summary()).demandCapacity, {
+    windowDays: 28,
+    hours: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    levels: [
+      { code: 'P1', capacity: 60, slots: [{ weekday, hour: 8, demand: 57.538, ratio: 0.959, over: false }], overSlots: 0 },
+      { code: 'P2', capacity: 48, slots: [{ weekday, hour: 8, demand: 48.231, ratio: 1.005, over: true }], overSlots: 1 },
+      { code: 'P3', capacity: 48, slots: [], overSlots: 0 }
+    ],
+    worst: { level: 'P2', weekday, hour: 8, ratio: 1.005 }
+  });
+});
+
+test('demand capacity BQ17 is empty without snapshots', async () => {
+  assert.deepEqual((await summary()).demandCapacity, {
+    windowDays: 28,
+    hours: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    levels: [
+      { code: 'P1', capacity: 60, slots: [], overSlots: 0 },
+      { code: 'P2', capacity: 48, slots: [], overSlots: 0 },
+      { code: 'P3', capacity: 48, slots: [], overSlots: 0 }
+    ],
+    worst: null
   });
 });
 

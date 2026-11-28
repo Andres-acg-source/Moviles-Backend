@@ -1,4 +1,5 @@
 ﻿import { conversionFunnel } from './conversion-funnel.js';
+import { demandCapacity } from './demand-capacity.js';
 import { eventCounts } from './event-counts.js';
 import { filterUsage } from './filter-usage.js';
 import { leadTimeOverview } from './lead-time-overview.js';
@@ -15,15 +16,17 @@ import { reservations } from './reservations.js';
 import { searchModality } from './search-modality.js';
 import { specialAvailability } from './special-availability.js';
 import { unmetDemand } from './unmet-demand.js';
+import { voiceRecognition } from './voice-recognition.js';
 import { walkingTime } from './walking-time.js';
 import { weekPlan } from './week-plan.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, types] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, voice, demand, types] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
     leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability(), reservationFlow(),
-    searchModality(), weekPlan(), reportMismatch(), reportTypes()
+    searchModality(), weekPlan(), reportMismatch(), voiceRecognition(), demandCapacity(), reportTypes()
   ]);
+
   return {
     generatedAt: new Date().toISOString(),
     eventCounts: counts,
@@ -44,6 +47,8 @@ export async function analyticsSummary() {
     searchModality: search,
     weekPlan: week,
     reportMismatch: reports,
+    voiceRecognition: voice,
+    demandCapacity: demand,
     reportTypes: types
   };
 }

@@ -861,6 +861,89 @@ function renderBq15(container, data) {
     data.bySlot.map(slot => [slot.level, hourLabel(slot.hour), fmtInt(slot.reports), fmtInt(slot.contradicting), fmtPct(slot.mismatchRate)]), [2, 3, 4]);
 }
 
+const VOICE_OUTCOMES = {
+  no_match: 'Heard nothing',
+  error: 'Recognizer error',
+  no_permission: 'No permission',
+  offline: 'No internet'
+};
+const voiceDevice = row => `${row.deviceModel} · ${row.platform === 'ios' ? 'iOS' : row.platform === 'android' ? 'Android' : row.platform} ${row.osVersion}`;
+
+function renderBq16(container, data) {
+  if (!data.attempts) {
+    empty(container, `No voice attempts in the last ${data.windowDays} days. They appear when a driver uses Voice search on Android or iOS.`);
+    return;
+  }
+  const worked = data.attempts - data.failures;
+  stats(container, [
+    { label: 'Recognition time', value: `${fmtMs(data.medianMs)} · ${fmtMs(data.p90Ms)}`, note: `Median and 90th percentile of the ${fmtInt(worked)} that worked` },
+    { label: 'Failed', value: fmtPct(data.failureRate), note: `${fmtInt(data.failures)} of ${fmtInt(data.attempts)} attempts` },
+    { label: 'Voice attempts', value: fmtInt(data.attempts), note: `last ${data.windowDays} days, Android and iOS` }
+  ]);
+  const split = h('div', { class: 'split' });
+  container.append(split);
+  const failures = data.byOutcome.filter(row => row.outcome !== 'ok');
+  const causes = block(split, 'Failures by cause');
+  if (failures.length) {
+    hbars(causes, failures.map(row => ({
+      label: VOICE_OUTCOMES[row.outcome] ?? row.outcome, value: row.attempts, note: `${fmtPct(row.share)} of the attempts`
+    })), { valueLabel: 'attempts' });
+  } else {
+    empty(causes, 'No attempt failed.');
+  }
+  const timed = data.byDevice.filter(row => row.medianMs !== null);
+  const times = block(split, 'Median recognition time by device');
+  if (timed.length) {
+    hbars(times, timed.map(row => ({
+      label: voiceDevice(row), value: row.medianMs, note: `p90 ${fmtMs(row.p90Ms)}, ${fmtInt(row.attempts)} attempts`
+    })), { format: value => fmtMs(value), valueLabel: 'median' });
+  } else {
+    empty(times, 'No recognition worked yet, so there is no time to show.');
+  }
+  tableView(container, ['Platform', 'Device', 'OS', 'Attempts', 'Median', 'p90', 'Failed'],
+    data.byDevice.map(row => [row.platform, row.deviceModel, row.osVersion, fmtInt(row.attempts), fmtMs(row.medianMs), fmtMs(row.p90Ms), fmtPct(row.failureRate)]), [3, 4, 5, 6]);
+  tableView(container, ['Level', 'Attempts', 'Failed'],
+    data.byLevel.map(row => [row.level === 'none' ? 'No open reservation' : row.level, fmtInt(row.attempts), fmtPct(row.failureRate)]), [1, 2]);
+}
+
+function renderBq17(container, data) {
+  const slots = data.levels.flatMap(level => level.slots.map(slot => ({ ...slot, level: level.code, capacity: level.capacity })));
+  if (!slots.length) {
+    empty(container, `No occupancy history in the last ${data.windowDays} days.`);
+    return;
+  }
+  const over = sum(data.levels.map(level => level.overSlots));
+  const [fullest] = [...data.levels].sort((a, b) => b.overSlots - a.overSlots);
+  const worst = data.worst;
+  stats(container, [
+    { label: 'Slots over capacity', value: fmtInt(over), note: `of ${fmtInt(slots.length)} level slots with history, last ${data.windowDays} days` },
+    { label: 'Worst slot', value: worst ? `${worst.level} · ${weekSlot(worst)}` : '–', note: worst ? `demand at ${fmtPct(worst.ratio)} of capacity` : 'no level with capacity' },
+    { label: 'Level with most full slots', value: fullest.overSlots ? fullest.code : '–', note: fullest.overSlots ? `${fmtInt(fullest.overSlots)} slots over its ${fmtInt(fullest.capacity)} spots` : 'no slot over capacity' }
+  ]);
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  for (const level of data.levels) {
+    const matrix = order.map(weekday => data.hours.map(hour => {
+      const ratio = level.slots.find(slot => slot.weekday === weekday && slot.hour === hour)?.ratio;
+      return ratio === null || ratio === undefined ? null : Math.round(ratio * 100);
+    }));
+    heatmap(block(container, `${level.code} · demand as % of its ${fmtInt(level.capacity)} spots by weekday and hour (Bogotá time)`),
+      order.map(day => SHORT_DAYS[day]), data.hours.map(hourLabel), matrix, {
+        rowTitle: label => WEEKDAYS[SHORT_DAYS.indexOf(label)],
+        description: `Heatmap of demand over capacity on ${level.code} by weekday and hour`,
+        unit: () => '% of capacity'
+      });
+  }
+  tableView(container, ['Level', 'Day', 'Hour', 'Demand', 'Capacity', 'Ratio', 'Over'],
+    [...slots].sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1)).map(slot => [
+      slot.level,
+      WEEKDAYS[slot.weekday],
+      hourLabel(slot.hour),
+      slot.demand.toFixed(1),
+      fmtInt(slot.capacity),
+      fmtPct(slot.ratio),
+      slot.over ? 'Yes' : 'No'
+    ]), [3, 4, 5]);
+}
 
 const REPORT_KIND_LABELS = {
   occupied: 'Occupied without a reservation',
@@ -963,6 +1046,8 @@ const SECTIONS = [
   ['bq13', summary => summary.searchModality, renderBq13],
   ['bq14', summary => summary.weekPlan, renderBq14],
   ['bq15', summary => summary.reportMismatch, renderBq15],
+  ['bq16', summary => summary.voiceRecognition, renderBq16],
+  ['bq17', summary => summary.demandCapacity, renderBq17],
   ['bq18', summary => summary.reportTypes, renderBq18],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
