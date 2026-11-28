@@ -15,7 +15,8 @@ export const reportSchema = z.object({
   shownStatus: z.enum(SPOT_STATUSES),
   note: z.string().trim().max(280).optional(),
   reportedAt: z.string().datetime({ offset: true }).optional(),
-  photo: z.string().base64().optional()
+  photo: z.string().base64().optional(),
+  platform: z.enum(['android', 'ios']).default('android')
 });
 
 export type ReportInput = z.infer<typeof reportSchema>;
@@ -74,8 +75,8 @@ export async function createReport(userId: string, input: ReportInput, now = new
   const { rows } = await db().query<ReportRow & { created: boolean }>(
     `WITH spot AS (SELECT id, level_code FROM spots WHERE id = $3::text),
      inserted AS (
-       INSERT INTO spot_reports (user_id, client_id, spot_id, level_code, kind, note, shown_status, photo, reported_at)
-       SELECT $1::uuid, $2::uuid, spot.id, spot.level_code, $4::text, $5::text, $6::text, $7::bytea, $8::timestamptz
+       INSERT INTO spot_reports (user_id, client_id, spot_id, level_code, kind, note, shown_status, photo, reported_at, platform)
+       SELECT $1::uuid, $2::uuid, spot.id, spot.level_code, $4::text, $5::text, $6::text, $7::bytea, $8::timestamptz, $9::text
          FROM spot
        ON CONFLICT (user_id, client_id) DO NOTHING
        RETURNING *
@@ -84,7 +85,7 @@ export async function createReport(userId: string, input: ReportInput, now = new
      UNION ALL
      SELECT ${columns}, false AS created FROM spot_reports r JOIN spots s ON s.id = r.spot_id
       WHERE r.user_id = $1::uuid AND r.client_id = $2::uuid`,
-    [userId, input.clientId, input.spotId, input.kind, input.note || null, input.shownStatus, photo, reportTime(input.reportedAt, now)]
+    [userId, input.clientId, input.spotId, input.kind, input.note || null, input.shownStatus, photo, reportTime(input.reportedAt, now), input.platform]
   );
   if (!rows.length) throw new Error('SPOT_NOT_FOUND');
   const [row] = rows;

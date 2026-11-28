@@ -9,6 +9,7 @@ import { predictionAccuracy } from './prediction-accuracy.js';
 import { predictionUsage } from './prediction-usage.js';
 import { redirectValue } from './redirect-value.js';
 import { reportMismatch } from './report-mismatch.js';
+import { reportTypes } from './report-types.js';
 import { reservationFlow } from './reservation-flow.js';
 import { reservationPolicy } from './reservation-policy.js';
 import { reservations } from './reservations.js';
@@ -20,11 +21,12 @@ import { walkingTime } from './walking-time.js';
 import { weekPlan } from './week-plan.js';
 
 export async function analyticsSummary() {
-  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, voice, demand] = await Promise.all([
+  const [counts, parkingSection, reservationsSection, walking, map, filters, unmet, policy, lead, funnel, prediction, redirects, accuracy, special, flow, search, week, reports, voice, demand, types] = await Promise.all([
     eventCounts(), parking(), reservations(), walkingTime(), mapLoad(), filterUsage(), unmetDemand(), reservationPolicy(),
     leadTimeOverview(), conversionFunnel(), predictionUsage(), redirectValue(), predictionAccuracy(), specialAvailability(), reservationFlow(),
-    searchModality(), weekPlan(), reportMismatch(), voiceRecognition(), demandCapacity()
+    searchModality(), weekPlan(), reportMismatch(), voiceRecognition(), demandCapacity(), reportTypes()
   ]);
+
   return {
     generatedAt: new Date().toISOString(),
     eventCounts: counts,
@@ -46,6 +48,7 @@ export async function analyticsSummary() {
     weekPlan: week,
     reportMismatch: reports,
     voiceRecognition: voice,
-    demandCapacity: demand
+    demandCapacity: demand,
+    reportTypes: types
   };
 }
