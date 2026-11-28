@@ -861,12 +861,52 @@ function renderBq15(container, data) {
     data.bySlot.map(slot => [slot.level, hourLabel(slot.hour), fmtInt(slot.reports), fmtInt(slot.contradicting), fmtPct(slot.mismatchRate)]), [2, 3, 4]);
 }
 
+function renderBq17(container, data) {
+  const slots = data.levels.flatMap(level => level.slots.map(slot => ({ ...slot, level: level.code, capacity: level.capacity })));
+  if (!slots.length) {
+    empty(container, `No occupancy history in the last ${data.windowDays} days.`);
+    return;
+  }
+  const over = sum(data.levels.map(level => level.overSlots));
+  const [fullest] = [...data.levels].sort((a, b) => b.overSlots - a.overSlots);
+  const worst = data.worst;
+  stats(container, [
+    { label: 'Slots over capacity', value: fmtInt(over), note: `of ${fmtInt(slots.length)} level slots with history, last ${data.windowDays} days` },
+    { label: 'Worst slot', value: worst ? `${worst.level} · ${weekSlot(worst)}` : '–', note: worst ? `demand at ${fmtPct(worst.ratio)} of capacity` : 'no level with capacity' },
+    { label: 'Level with most full slots', value: fullest.overSlots ? fullest.code : '–', note: fullest.overSlots ? `${fmtInt(fullest.overSlots)} slots over its ${fmtInt(fullest.capacity)} spots` : 'no slot over capacity' }
+  ]);
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  for (const level of data.levels) {
+    const matrix = order.map(weekday => data.hours.map(hour => {
+      const ratio = level.slots.find(slot => slot.weekday === weekday && slot.hour === hour)?.ratio;
+      return ratio === null || ratio === undefined ? null : Math.round(ratio * 100);
+    }));
+    heatmap(block(container, `${level.code} · demand as % of its ${fmtInt(level.capacity)} spots by weekday and hour (Bogotá time)`),
+      order.map(day => SHORT_DAYS[day]), data.hours.map(hourLabel), matrix, {
+        rowTitle: label => WEEKDAYS[SHORT_DAYS.indexOf(label)],
+        description: `Heatmap of demand over capacity on ${level.code} by weekday and hour`,
+        unit: () => '% of capacity'
+      });
+  }
+  tableView(container, ['Level', 'Day', 'Hour', 'Demand', 'Capacity', 'Ratio', 'Over'],
+    [...slots].sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1)).map(slot => [
+      slot.level,
+      WEEKDAYS[slot.weekday],
+      hourLabel(slot.hour),
+      slot.demand.toFixed(1),
+      fmtInt(slot.capacity),
+      fmtPct(slot.ratio),
+      slot.over ? 'Yes' : 'No'
+    ]), [3, 4, 5]);
+}
+
 // ---------------------------------------------------------------- render, load, session
 
 const SECTIONS = [
   ['bq13', summary => summary.searchModality, renderBq13],
   ['bq14', summary => summary.weekPlan, renderBq14],
   ['bq15', summary => summary.reportMismatch, renderBq15],
+  ['bq17', summary => summary.demandCapacity, renderBq17],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq9', summary => summary.redirectValue, renderBq9],
