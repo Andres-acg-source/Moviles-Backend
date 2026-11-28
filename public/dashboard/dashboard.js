@@ -861,12 +861,109 @@ function renderBq15(container, data) {
     data.bySlot.map(slot => [slot.level, hourLabel(slot.hour), fmtInt(slot.reports), fmtInt(slot.contradicting), fmtPct(slot.mismatchRate)]), [2, 3, 4]);
 }
 
+
+const REPORT_KIND_LABELS = {
+  occupied: 'Occupied without a reservation',
+  blocked: 'Spot blocked',
+  damaged: 'Sign or paint damaged',
+  other: 'Something else'
+};
+
+const REPORT_PLATFORM_LABELS = {
+  android: 'Android',
+  ios: 'iOS'
+};
+
+function renderBq18(container, data) {
+  if (!data.reports) {
+    empty(container, 'No reports in the last 28 days. They appear when a driver reports a spot from Android or iOS.');
+    return;
+  }
+
+  stats(container, [
+    {
+      label: 'Reports',
+      value: fmtInt(data.reports),
+      note: `last ${data.windowDays} days`
+    },
+    {
+      label: 'Reports with a photo',
+      value: fmtPct(data.photoShare),
+      note: `${fmtInt(data.withPhoto)} of ${fmtInt(data.reports)} reports`
+    },
+    {
+      label: 'Most reported problem',
+      value: REPORT_KIND_LABELS[data.mostReported] ?? '–'
+    },
+    {
+      label: 'Reports with a note',
+      value: fmtPct(data.noteShare),
+      note: `${fmtInt(data.withNote)} of ${fmtInt(data.reports)} reports`
+    }
+  ]);
+
+  const split = h('div', { class: 'split' });
+  container.append(split);
+
+  hbars(
+    block(split, 'Reports by problem type'),
+    data.byKind.map(row => ({
+      label: REPORT_KIND_LABELS[row.kind] ?? row.kind,
+      value: row.reports,
+      note: `${fmtPct(row.share)} of all reports`
+    })),
+    { valueLabel: 'reports' }
+  );
+
+  hbars(
+    block(split, 'Share of reports with a photo by type'),
+    data.byKind.map(row => ({
+      label: REPORT_KIND_LABELS[row.kind] ?? row.kind,
+      value: row.photoShare,
+      note: `${fmtInt(row.withPhoto)} of ${fmtInt(row.reports)} reports`
+    })),
+    {
+      format: value => fmtPct(value),
+      max: 1,
+      valueLabel: 'with a photo'
+    }
+  );
+
+  tableView(
+    block(container, 'Breakdown by problem type'),
+    ['Problem', 'Reports', 'Share', 'Photos', 'Photo share', 'Notes', 'Note share'],
+    data.byKind.map(row => [
+      REPORT_KIND_LABELS[row.kind] ?? row.kind,
+      fmtInt(row.reports),
+      fmtPct(row.share),
+      fmtInt(row.withPhoto),
+      fmtPct(row.photoShare),
+      fmtInt(row.withNote),
+      fmtPct(row.noteShare)
+    ]),
+    [1, 2, 3, 4, 5, 6]
+  );
+
+  tableView(
+    block(container, 'Breakdown by platform'),
+    ['Platform', 'Reports', 'Photo share', 'Note share'],
+    data.byPlatform.map(row => [
+      REPORT_PLATFORM_LABELS[row.platform] ?? row.platform,
+      fmtInt(row.reports),
+      fmtPct(row.photoShare),
+      fmtPct(row.noteShare)
+    ]),
+    [1, 2, 3]
+  );
+}
+
 // ---------------------------------------------------------------- render, load, session
 
 const SECTIONS = [
   ['bq13', summary => summary.searchModality, renderBq13],
   ['bq14', summary => summary.weekPlan, renderBq14],
   ['bq15', summary => summary.reportMismatch, renderBq15],
+  ['bq18', summary => summary.reportTypes, renderBq18],
   ['bq7', summary => summary.conversionFunnel, renderBq7],
   ['bq8', summary => summary.predictionUsage, renderBq8],
   ['bq9', summary => summary.redirectValue, renderBq9],
